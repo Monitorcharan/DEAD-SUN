@@ -245,13 +245,18 @@ class DeadSunGame {
       btnSplashLeaderboard: document.getElementById('btn-splash-leaderboard'),
       leaderboardModal: document.getElementById('leaderboard-modal'),
       leaderboardRows: document.getElementById('leaderboard-rows'),
-      btnCloseLeaderboard: document.getElementById('btn-close-leaderboard')
+      btnCloseLeaderboard: document.getElementById('btn-close-leaderboard'),
+      // Real-Time Pre-Game Pilot Registration
+      splashCallsignInput: document.getElementById('splash-callsign-input')
     };
 
     // Terminal typewriter timers & state
     this.termTypeTimer = null;
     this.termTyping = false;
     this.termFullText = "";
+
+    // Pilot Callsign (Registered on Start Splash Screen)
+    this.playerCallsign = (localStorage.getItem('deadsun_callsign') || 'PILOT').toUpperCase().slice(0, 8);
 
     // Mobile Dual-Zone Touch State
     this.touchMode = 'AUTO'; // 'AUTO', 'ON', 'OFF'
@@ -760,6 +765,23 @@ class DeadSunGame {
       this.dom.btnCloseLeaderboard.addEventListener('click', () => this.closeLeaderboard());
     }
 
+    // Pre-game Pilot Registration on Start Splash Screen
+    if (this.dom.splashCallsignInput) {
+      this.dom.splashCallsignInput.value = this.playerCallsign;
+      this.dom.splashCallsignInput.addEventListener('input', (e) => {
+        let clean = e.target.value.toUpperCase().replace(/[^A-Z0-9_\-]/g, '').slice(0, 8);
+        e.target.value = clean;
+        this.playerCallsign = clean || 'PILOT';
+        localStorage.setItem('deadsun_callsign', this.playerCallsign);
+      });
+      this.dom.splashCallsignInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.startGame();
+        }
+      });
+    }
+
     // Initialize Mobile Touch Controls
     this.initTouchControls();
     this.applyTouchMode();
@@ -955,6 +977,12 @@ class DeadSunGame {
   }
 
   startGame() {
+    // Register Pilot Callsign before beginning mission
+    if (this.dom.splashCallsignInput) {
+      const val = this.dom.splashCallsignInput.value.trim().toUpperCase().replace(/[^A-Z0-9_\-]/g, '').slice(0, 8);
+      this.playerCallsign = val || 'PILOT';
+      localStorage.setItem('deadsun_callsign', this.playerCallsign);
+    }
     this.dom.startSplash.classList.add('hidden');
     this.resetRun();
 
@@ -2129,6 +2157,7 @@ class DeadSunGame {
     const lines = [
       "> recovering unit telemetry ...",
       "",
+      `PILOT .......... ${this.playerCallsign}`,
       `STATUS ......... KIA — ${cause.toUpperCase()}`,
       `DISTANCE ....... ${this.distance} M     (best ${this.bests.dist})`,
       `TIME SURVIVED .. ${this.elapsedTime.toFixed(1)} S    (best ${this.bests.time})`,
@@ -2141,6 +2170,9 @@ class DeadSunGame {
     this.termFullText = lines.join("\n");
     this.termCurrentText = "";
     this.termTyping = true;
+
+    // Trigger real-time transmission immediately under registered pilot name
+    this.submitScore();
 
     let lineIdx = 0;
     let charIdx = 0;
@@ -2191,7 +2223,7 @@ class DeadSunGame {
     if (this.dom.termCallsignBox) {
       this.dom.termCallsignBox.classList.remove('hidden');
       if (this.dom.inputCallsign) {
-        this.dom.inputCallsign.value = localStorage.getItem('deadsun_callsign') || 'PILOT';
+        this.dom.inputCallsign.value = this.playerCallsign;
       }
     }
   }
@@ -2207,10 +2239,11 @@ class DeadSunGame {
   async submitScore() {
     if (this.scoreSubmitted) return;
 
-    let callsign = (this.dom.inputCallsign ? this.dom.inputCallsign.value : 'PILOT') || 'PILOT';
+    let callsign = this.playerCallsign || (this.dom.inputCallsign ? this.dom.inputCallsign.value : 'PILOT') || 'PILOT';
     callsign = callsign.toUpperCase().replace(/[^A-Z0-9_\-]/g, '').slice(0, 8);
     if (!callsign) callsign = 'PILOT';
 
+    this.playerCallsign = callsign;
     localStorage.setItem('deadsun_callsign', callsign);
 
     const payload = {
@@ -2278,10 +2311,10 @@ class DeadSunGame {
     this.dom.leaderboardModal.classList.remove('hidden');
 
     if (this.dom.leaderboardRows) {
-      this.dom.leaderboardRows.innerHTML = '<tr><td colspan="5" class="leaderboard-empty">FETCHING SECTOR TELEMETRY...</td></tr>';
+      this.dom.leaderboardRows.innerHTML = '<tr><td colspan="5" class="leaderboard-empty">FETCHING LIVE SECTOR TELEMETRY...</td></tr>';
     }
 
-    const currentCallsign = localStorage.getItem('deadsun_callsign') || 'PILOT';
+    const currentCallsign = this.playerCallsign || localStorage.getItem('deadsun_callsign') || 'PILOT';
     const endpoints = [
       '/api/leaderboard',
       'http://localhost:3000/api/leaderboard'
@@ -2319,7 +2352,7 @@ class DeadSunGame {
   renderLeaderboardTable(records, highlightCallsign, highlightDist) {
     if (!this.dom.leaderboardRows) return;
     if (!records || records.length === 0) {
-      this.dom.leaderboardRows.innerHTML = '<tr><td colspan="5" class="leaderboard-empty">NO TELEMETRY RECORDED IN SECTOR</td></tr>';
+      this.dom.leaderboardRows.innerHTML = '<tr><td colspan="5" class="leaderboard-empty">NO PILOT RUNS RECORDED IN THIS SECTOR YET<br><span style="font-size: 13px; color: #43e1ff; margin-top: 8px; display: block;">REGISTER YOUR CALLSIGN ON THE MAIN MENU &amp; SURVIVE TO CLAIM RANK #1</span></td></tr>';
       return;
     }
 
@@ -2343,24 +2376,14 @@ class DeadSunGame {
   }
 
   loadLocalLeaderboard() {
-    const defaultAces = [
-      { rank: 1, callsign: 'VALKYRIE', distance: 684, time: 88.5, shelters: 14 },
-      { rank: 2, callsign: 'SOLARIS',  distance: 540, time: 71.2, shelters: 11 },
-      { rank: 3, callsign: 'ORION',    distance: 462, time: 62.0, shelters: 9 },
-      { rank: 4, callsign: 'PHOENIX',  distance: 388, time: 51.4, shelters: 7 },
-      { rank: 5, callsign: 'NOVA',     distance: 310, time: 42.8, shelters: 6 }
-    ];
-
     try {
       const stored = JSON.parse(localStorage.getItem('deadsun_local_scores') || '[]');
       if (Array.isArray(stored) && stored.length > 0) {
-        const merged = [...stored, ...defaultAces];
-        merged.sort((a, b) => b.distance !== a.distance ? b.distance - a.distance : a.time - b.time);
-        return merged.map((entry, idx) => ({ ...entry, rank: idx + 1 }));
+        stored.sort((a, b) => b.distance !== a.distance ? b.distance - a.distance : a.time - b.time);
+        return stored.map((entry, idx) => ({ ...entry, rank: idx + 1 }));
       }
     } catch (e) {}
-
-    return defaultAces;
+    return [];
   }
 
   saveLocalLeaderboard(entry) {

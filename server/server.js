@@ -13,16 +13,29 @@ const PORT = process.env.PORT || 3000;
 const DB_FILE = path.join(__dirname, 'scores.json');
 const STATIC_DIR = path.resolve(__dirname, '..');
 
-// Default Sector Hall-of-Fame Pilot Entries
-const DEFAULT_SCORES = [
-  { rank: 1, callsign: 'VALKYRIE', distance: 684, time: 88.5, shelters: 14, seed: 481920145, date: '2026-09-15' },
-  { rank: 2, callsign: 'SOLARIS',  distance: 540, time: 71.2, shelters: 11, seed: 194820392, date: '2026-09-16' },
-  { rank: 3, callsign: 'ORION',    distance: 462, time: 62.0, shelters: 9,  seed: 928301928, date: '2026-09-17' },
-  { rank: 4, callsign: 'PHOENIX',  distance: 388, time: 51.4, shelters: 7,  seed: 394820194, date: '2026-09-18' },
-  { rank: 5, callsign: 'NOVA',     distance: 310, time: 42.8, shelters: 6,  seed: 582019482, date: '2026-09-18' },
-  { rank: 6, callsign: 'GHOST',    distance: 245, time: 33.1, shelters: 4,  seed: 102938475, date: '2026-09-18' },
-  { rank: 7, callsign: 'APOLLO',   distance: 190, time: 26.5, shelters: 3,  seed: 692830194, date: '2026-09-18' }
-];
+// Real Pilot Leaderboard (Zero fake/placeholder scores)
+const DEFAULT_SCORES = [];
+
+function sanitizeDatabaseUrl(rawUrl) {
+  if (!rawUrl) return null;
+  let str = rawUrl.trim();
+  const match = str.match(/^(postgres(?:ql)?:\/\/)([^:]+):(.*)@([^@]+)$/);
+  if (match) {
+    const protocol = match[1];
+    const user = match[2];
+    let password = match[3];
+    const hostAndRest = match[4];
+    // Strip accidental placeholder brackets [ ] if user copied them
+    if (password.startsWith('[') && password.endsWith(']')) {
+      password = password.slice(1, -1);
+    }
+    let rawPass = password;
+    try { rawPass = decodeURIComponent(password); } catch(e) {}
+    const safePass = encodeURIComponent(rawPass);
+    return `${protocol}${user}:${safePass}@${hostAndRest}`;
+  }
+  return str;
+}
 
 // =========================================================
 // 1. DATABASE CONFIGURATION (POSTGRESQL + LOCAL JSON FALLBACK)
@@ -32,9 +45,10 @@ let pgPool = null;
 if (process.env.DATABASE_URL) {
   try {
     const { Pool } = require('pg');
-    const isLocal = process.env.DATABASE_URL.includes('localhost') || process.env.DATABASE_URL.includes('127.0.0.1');
+    const sanitizedUrl = sanitizeDatabaseUrl(process.env.DATABASE_URL);
+    const isLocal = sanitizedUrl.includes('localhost') || sanitizedUrl.includes('127.0.0.1');
     pgPool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString: sanitizedUrl,
       ssl: isLocal ? false : { rejectUnauthorized: false }
     });
     console.log('[DATABASE] Initializing PostgreSQL connection pool...');
@@ -63,19 +77,6 @@ async function initPostgresTable() {
       );
       CREATE INDEX IF NOT EXISTS idx_leaderboard_rank ON leaderboard (distance DESC, time ASC);
     `);
-
-    // Seed default scores if table is empty
-    const countRes = await client.query('SELECT COUNT(*) FROM leaderboard');
-    if (parseInt(countRes.rows[0].count, 10) === 0) {
-      for (const entry of DEFAULT_SCORES) {
-        await client.query(
-          `INSERT INTO leaderboard (callsign, distance, time, shelters, seed) VALUES ($1, $2, $3, $4, $5)`,
-          [entry.callsign, entry.distance, entry.time, entry.shelters, entry.seed]
-        );
-      }
-      console.log('[DATABASE] Seeded PostgreSQL leaderboard with default Hall of Fame pilots.');
-    }
-
     client.release();
     console.log('[DATABASE] PostgreSQL Leaderboard table ready & indexed!');
   } catch (err) {

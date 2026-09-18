@@ -954,7 +954,66 @@ canvas {
   font-size: 16px;
   color: var(--c-text-dim);
   letter-spacing: 0.1em;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
+}
+
+/* Pilot Registration Box on Splash Screen */
+.splash-reg-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  background: rgba(4, 18, 30, 0.7);
+  border: 1.5px solid rgba(67, 225, 255, 0.45);
+  border-radius: 12px;
+  padding: 14px 28px;
+  box-shadow: 0 0 24px rgba(67, 225, 255, 0.18), inset 0 0 12px rgba(67, 225, 255, 0.08);
+  margin: 4px 0 12px 0;
+  backdrop-filter: blur(8px);
+}
+
+.splash-reg-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--c-cyan);
+  text-shadow: 0 0 10px rgba(67, 225, 255, 0.6);
+}
+
+.splash-reg-input-wrap {
+  display: flex;
+  align-items: center;
+}
+
+#splash-callsign-input {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #58f888;
+  background: rgba(0, 10, 16, 0.85);
+  border: 2px solid #43e1ff;
+  border-radius: 8px;
+  padding: 8px 18px;
+  text-align: center;
+  width: 230px;
+  outline: none;
+  box-shadow: inset 0 0 10px rgba(67, 225, 255, 0.3), 0 0 12px rgba(67, 225, 255, 0.2);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+#splash-callsign-input:focus {
+  border-color: #58f888;
+  box-shadow: inset 0 0 12px rgba(88, 248, 136, 0.4), 0 0 20px rgba(88, 248, 136, 0.5);
+}
+
+.splash-reg-hint {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 13px;
+  color: rgba(220, 238, 250, 0.65);
+  letter-spacing: 0.05em;
 }
 
 .action-btn {
