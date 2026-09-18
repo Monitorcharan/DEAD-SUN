@@ -1,7 +1,8 @@
 /**
  * DEAD SUN - Dedicated Sector Leaderboard & Game Server
  * Provides RESTful API endpoints for pilot score submission and ranking.
- * Zero-dependency compatible (runs with native Node.js HTTP or Express).
+ * Supports PostgreSQL database (Render Postgres, Supabase, Neon) with automatic
+ * local JSON file fallback for offline and local development.
  */
 
 const fs = require('fs');
@@ -23,7 +24,66 @@ const DEFAULT_SCORES = [
   { rank: 7, callsign: 'APOLLO',   distance: 190, time: 26.5, shelters: 3,  seed: 692830194, date: '2026-09-18' }
 ];
 
-// Load or initialize scores file
+// =========================================================
+// 1. DATABASE CONFIGURATION (POSTGRESQL + LOCAL JSON FALLBACK)
+// =========================================================
+let pgPool = null;
+
+if (process.env.DATABASE_URL) {
+  try {
+    const { Pool } = require('pg');
+    const isLocal = process.env.DATABASE_URL.includes('localhost') || process.env.DATABASE_URL.includes('127.0.0.1');
+    pgPool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: isLocal ? false : { rejectUnauthorized: false }
+    });
+    console.log('[DATABASE] Initializing PostgreSQL connection pool...');
+    initPostgresTable();
+  } catch (err) {
+    console.warn('[DATABASE] Could not load pg module. Using local JSON store:', err.message);
+    pgPool = null;
+  }
+} else {
+  console.log('[DATABASE] No DATABASE_URL found. Using local JSON store (scores.json).');
+}
+
+async function initPostgresTable() {
+  if (!pgPool) return;
+  try {
+    const client = await pgPool.connect();
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS leaderboard (
+        id SERIAL PRIMARY KEY,
+        callsign VARCHAR(12) NOT NULL,
+        distance INT NOT NULL,
+        time NUMERIC(6, 1) NOT NULL,
+        shelters INT NOT NULL DEFAULT 0,
+        seed BIGINT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_leaderboard_rank ON leaderboard (distance DESC, time ASC);
+    `);
+
+    // Seed default scores if table is empty
+    const countRes = await client.query('SELECT COUNT(*) FROM leaderboard');
+    if (parseInt(countRes.rows[0].count, 10) === 0) {
+      for (const entry of DEFAULT_SCORES) {
+        await client.query(
+          `INSERT INTO leaderboard (callsign, distance, time, shelters, seed) VALUES ($1, $2, $3, $4, $5)`,
+          [entry.callsign, entry.distance, entry.time, entry.shelters, entry.seed]
+        );
+      }
+      console.log('[DATABASE] Seeded PostgreSQL leaderboard with default Hall of Fame pilots.');
+    }
+
+    client.release();
+    console.log('[DATABASE] PostgreSQL Leaderboard table ready & indexed!');
+  } catch (err) {
+    console.error('[DATABASE] PostgreSQL table initialization failed:', err.message);
+  }
+}
+
+// Local JSON file storage helpers
 function loadScores() {
   try {
     if (fs.existsSync(DB_FILE)) {
@@ -45,19 +105,64 @@ function saveScores(scores) {
   }
 }
 
-// In-memory score cache
 let scoresCache = loadScores();
 
-// Helper: Rank and Sort Scores
-function getRankedScores() {
+async function getRankedScores() {
+  if (pgPool) {
+    try {
+      const res = await pgPool.query(`
+        SELECT callsign, distance, time::float, shelters, seed, created_at
+        FROM leaderboard
+        ORDER BY distance DESC, time ASC
+        LIMIT 50;
+      `);
+      return res.rows.map((row, idx) => ({
+        rank: idx + 1,
+        callsign: row.callsign,
+        distance: row.distance,
+        time: parseFloat(row.time),
+        shelters: row.shelters,
+        seed: row.seed,
+        date: row.created_at ? new Date(row.created_at).toISOString().split('T')[0] : ''
+      }));
+    } catch (err) {
+      console.error('[DATABASE] Postgres query failed, falling back to cache:', err.message);
+    }
+  }
+
+  // Fallback to local in-memory/JSON store
   scoresCache.sort((a, b) => {
     if (b.distance !== a.distance) return b.distance - a.distance;
-    return a.time - b.time; // faster time wins tiebreaker
+    return a.time - b.time;
   });
   return scoresCache.slice(0, 50).map((entry, idx) => ({
     ...entry,
     rank: idx + 1
   }));
+}
+
+async function insertScore(newEntry) {
+  if (pgPool) {
+    try {
+      await pgPool.query(
+        `INSERT INTO leaderboard (callsign, distance, time, shelters, seed) VALUES ($1, $2, $3, $4, $5)`,
+        [newEntry.callsign, newEntry.distance, newEntry.time, newEntry.shelters, newEntry.seed]
+      );
+      // Determine rank of this pilot
+      const rankRes = await pgPool.query(
+        `SELECT COUNT(*) + 1 AS rank FROM leaderboard WHERE distance > $1 OR (distance = $1 AND time < $2)`,
+        [newEntry.distance, newEntry.time]
+      );
+      return parseInt(rankRes.rows[0].rank, 10);
+    } catch (err) {
+      console.error('[DATABASE] Postgres insert failed, falling back to local JSON:', err.message);
+    }
+  }
+
+  scoresCache.push(newEntry);
+  saveScores(scoresCache);
+  const ranked = await getRankedScores();
+  return ranked.findIndex(e => e.callsign === newEntry.callsign && e.distance === newEntry.distance && e.time === newEntry.time) + 1;
 }
 
 // MIME types for static asset serving
@@ -73,8 +178,10 @@ const MIME_TYPES = {
   '.mp4': 'video/mp4'
 };
 
-// Create Native HTTP Server
-const server = http.createServer((req, res) => {
+// =========================================================
+// 2. HTTP SERVER & API ROUTING
+// =========================================================
+const server = http.createServer(async (req, res) => {
   // CORS Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -91,16 +198,21 @@ const server = http.createServer((req, res) => {
 
   // 1. GET /api/leaderboard
   if (req.method === 'GET' && pathname === '/api/leaderboard') {
-    const ranked = getRankedScores();
+    const ranked = await getRankedScores();
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok', leaderboard: ranked }));
+    res.end(JSON.stringify({ status: 'ok', database: pgPool ? 'postgresql' : 'json-store', leaderboard: ranked }));
     return;
   }
 
   // 2. GET /api/health
   if (req.method === 'GET' && pathname === '/api/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok', serverTime: new Date().toISOString(), pilots: scoresCache.length }));
+    res.end(JSON.stringify({
+      status: 'ok',
+      database: pgPool ? 'postgresql' : 'json-store',
+      serverTime: new Date().toISOString(),
+      pilots: scoresCache.length
+    }));
     return;
   }
 
@@ -112,7 +224,7 @@ const server = http.createServer((req, res) => {
       if (body.length > 1e6) req.socket.destroy(); // Flood protection
     });
 
-    req.on('end', () => {
+    req.on('end', async () => {
       try {
         const payload = JSON.parse(body || '{}');
         let { callsign, distance, time, shelters, seed } = payload;
@@ -144,18 +256,16 @@ const server = http.createServer((req, res) => {
           date: new Date().toISOString().split('T')[0]
         };
 
-        scoresCache.push(newEntry);
-        saveScores(scoresCache);
+        const playerRank = await insertScore(newEntry);
+        const ranked = await getRankedScores();
 
-        const ranked = getRankedScores();
-        const playerRank = ranked.findIndex(e => e.callsign === callsign && e.distance === distance && e.time === newEntry.time) + 1;
-
-        console.log(`[SCORE TRANSMITTED] ${callsign} achieved ${distance}m in ${time.toFixed(1)}s (Rank #${playerRank || '?'})`);
+        console.log(`[SCORE TRANSMITTED] ${callsign} achieved ${distance}m in ${time.toFixed(1)}s (Rank #${playerRank || '?'}) [DB: ${pgPool ? 'Postgres' : 'JSON'}]`);
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           status: 'success',
           rank: playerRank || null,
+          database: pgPool ? 'postgresql' : 'json-store',
           leaderboard: ranked
         }));
       } catch (err) {
@@ -193,9 +303,10 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`====================================================`);
   console.log(` DEAD SUN Dedicated Server & Leaderboard Online!   `);
-  console.log(` Port:    http://localhost:${PORT}                 `);
-  console.log(` API:     http://localhost:${PORT}/api/leaderboard `);
-  console.log(` Health:  http://localhost:${PORT}/api/health      `);
-  console.log(` Static:  ${STATIC_DIR}                            `);
+  console.log(` Port:     http://localhost:${PORT}                `);
+  console.log(` DB Mode:  ${pgPool ? 'PostgreSQL (Active)' : 'Local JSON Fallback'} `);
+  console.log(` API:      http://localhost:${PORT}/api/leaderboard`);
+  console.log(` Health:   http://localhost:${PORT}/api/health     `);
+  console.log(` Static:   ${STATIC_DIR}                           `);
   console.log(`====================================================`);
 });
