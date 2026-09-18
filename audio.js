@@ -407,6 +407,30 @@ class SoundEngine {
     }
   }
 
+  // Suit Decompression Rupture & Visor Shatter Crack
+  playSuitRupture() {
+    if (!this.ctx || this.sfxMuted) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(3200, now);
+    osc.frequency.exponentialRampToValueAtTime(360, now + 0.18);
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = "highpass";
+    filter.frequency.setValueAtTime(1400, now);
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.5, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.sfxGain);
+    osc.start(now);
+    osc.stop(now + 0.22);
+  }
+
   // Heat Warning Beep (Sleek sci-fi dual-frequency telemetry chirp)
   playWarningBeep(freq = 660) {
     if (!this.ctx || this.sfxMuted) return;

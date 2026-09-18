@@ -148,6 +148,17 @@ class DeadSunGame {
     this.particles = [];
     this.dashGhosts = [];
 
+    // Death Sequence & Visual Effects
+    this.deathTimer = 0;
+    this.deathDuration = 1.65;
+    this.deathCause = "";
+    this.deathParticles = [];
+    this.deathShockwaves = [];
+    this.deathDebris = [];
+    this.deathDecals = [];
+    this.deathFlameGfx = null;
+    this.deathFlashTimer = null;
+
     // Eclipse Event (Total solar eclipse with moon sliding over sun)
     this.eclipse = {
       active: false,
@@ -199,6 +210,7 @@ class DeadSunGame {
       flareBanner: document.getElementById('flare-banner'),
       flareText: document.getElementById('flare-text'),
       solarFlareOverlay: document.getElementById('solar-flare-overlay'),
+      deathFlashOverlay: document.getElementById('death-flash-overlay'),
       heatVignette: document.getElementById('heat-vignette'),
       supplyTracker: document.getElementById('supply-tracker'),
       introBanner: document.getElementById('intro-title-banner'),
@@ -711,11 +723,13 @@ class DeadSunGame {
         }
       }
 
-      if (e.code === 'KeyR' && this.state === 'GAMEOVER') {
+      if (e.code === 'KeyR' && (this.state === 'GAMEOVER' || this.state === 'DYING')) {
+        if (this.state === 'DYING') this.skipDeathAnimation();
         this.restartGame();
       }
 
-      if ((e.code === 'KeyM' || e.code === 'KeyQ') && this.state === 'GAMEOVER') {
+      if ((e.code === 'KeyM' || e.code === 'KeyQ') && (this.state === 'GAMEOVER' || this.state === 'DYING')) {
+        if (this.state === 'DYING') this.skipDeathAnimation();
         this.returnToMenu();
       }
 
@@ -729,6 +743,9 @@ class DeadSunGame {
         } else if (this.state === 'TUTORIAL') {
           e.preventDefault();
           this.closeTutorial();
+        } else if (this.state === 'DYING') {
+          e.preventDefault();
+          this.skipDeathAnimation();
         } else if (this.state === 'GAMEOVER') {
           // If typing is active, skip it; otherwise don't interfere if focused on callsign input
           if (document.activeElement === this.dom.inputCallsign) {
@@ -750,6 +767,18 @@ class DeadSunGame {
         }
       }
     });
+
+    // Tap / Click anywhere during death animation to fast-forward straight to terminal
+    window.addEventListener('click', (e) => {
+      if (this.state === 'DYING') {
+        this.skipDeathAnimation();
+      }
+    });
+    window.addEventListener('touchstart', (e) => {
+      if (this.state === 'DYING') {
+        this.skipDeathAnimation();
+      }
+    }, { passive: true });
 
     window.addEventListener('keyup', (e) => {
       this.keys[e.code] = false;
@@ -1118,6 +1147,40 @@ class DeadSunGame {
     if (this.dom.heatVignette) this.dom.heatVignette.style.opacity = '0';
     if (this.dom.container) this.dom.container.classList.remove('critical-heat-active');
     if (this.dom.supplyTracker) this.dom.supplyTracker.classList.add('hidden');
+
+    // Clean up any remaining death decals, shockwaves, debris, particles & flames
+    for (const d of this.deathDecals) { try { d.destroy(); } catch(e){} }
+    this.deathDecals = [];
+    for (const s of this.deathShockwaves) { try { s.gfx.destroy(); } catch(e){} }
+    this.deathShockwaves = [];
+    for (const p of this.deathParticles) { try { p.gfx.destroy(); } catch(e){} }
+    this.deathParticles = [];
+    for (const b of this.deathDebris) { try { b.gfx.destroy(); } catch(e){} }
+    this.deathDebris = [];
+    if (this.deathFlameGfx) { try { this.deathFlameGfx.destroy(); } catch(e){} this.deathFlameGfx = null; }
+
+    if (this.dom.deathFlashOverlay) {
+      this.dom.deathFlashOverlay.classList.add('hidden');
+      this.dom.deathFlashOverlay.classList.remove('active', 'fade');
+    }
+    if (this.deathFlashTimer) {
+      clearTimeout(this.deathFlashTimer);
+      this.deathFlashTimer = null;
+    }
+
+    // Fully restore astronaut sprite & cyan oxygen tank glow
+    if (this.playerSprite) {
+      this.playerSprite.visible = true;
+      this.playerSprite.alpha = 1.0;
+      this.playerSprite.tint = 0xffffff;
+      this.playerSprite.position.set(0, 0);
+      this.playerSprite.scale.set(0.052);
+    }
+    if (this.tankGlow) {
+      this.tankGlow.visible = true;
+      this.tankGlow.alpha = 0.65;
+      this.tankGlow.scale.set(1.0);
+    }
 
     if (this.termTypeTimer) {
       clearTimeout(this.termTypeTimer);
@@ -1825,6 +1888,8 @@ class DeadSunGame {
 
       // 12. HUD
       this.updateHud();
+    } else if (this.state === 'DYING') {
+      this.updateDeathSequence(dt);
     }
   }
 
@@ -2162,7 +2227,7 @@ class DeadSunGame {
   }
 
   togglePause() {
-    if (this.state === 'GAMEOVER' || this.state === 'SPLASH') return;
+    if (this.state === 'GAMEOVER' || this.state === 'DYING' || this.state === 'SPLASH') return;
     this.paused = !this.paused;
     if (this.paused) {
       this.dom.pauseMenu.classList.remove('hidden');
@@ -2173,19 +2238,402 @@ class DeadSunGame {
     }
   }
 
+  /* =======================================================
+     CATASTROPHIC DEATH ANIMATION & INCINERATION SYSTEM
+     ======================================================= */
   triggerDeath(cause) {
-    if (this.state === 'GAMEOVER') return;
-    this.state = 'GAMEOVER';
-    if (window.soundEngine) window.soundEngine.playHit();
-    this.camera.shakeIntensity = 18;
+    if (this.state === 'GAMEOVER' || this.state === 'DYING') return;
+    this.state = 'DYING';
+    this.deathCause = cause || "SUCCUMBED TO THE DEAD SUN";
+    this.deathTimer = 0;
+    this.deathDuration = 1.65;
+
+    // Catastrophic Audio Decompression & Shockwave
+    if (window.soundEngine) {
+      window.soundEngine.playHit();
+      if (window.soundEngine.playSuitRupture) {
+        window.soundEngine.playSuitRupture();
+      }
+    }
+
+    // High intensity cinematic screen shudder
+    this.camera.shakeIntensity = 28;
     this.saveBests();
 
-    // Hide active HUD banners
+    // Hide active HUD warnings and speech bubbles
     if (this.dom.critBanner) this.dom.critBanner.classList.add('hidden');
     if (this.dom.flareBanner) this.dom.flareBanner.classList.add('hidden');
     if (this.dom.supplyTracker) this.dom.supplyTracker.classList.add('hidden');
+    if (this.dom.shadeQuip) this.dom.shadeQuip.classList.remove('active');
+    if (this.dom.transmissionLayer) this.dom.transmissionLayer.classList.add('hidden');
+    if (this.dom.tutorialCard) this.dom.tutorialCard.classList.add('hidden');
+    if (this.dom.pauseMenu) this.dom.pauseMenu.classList.add('hidden');
 
-    this.startTerminalTypewriter(cause);
+    // Freeze player velocity
+    this.player.vx = 0;
+    this.player.vy = 0;
+
+    // Searing solar flash vignette
+    this.triggerDeathScreenFlash();
+
+    // Spawn dramatic in-engine death FX (crater decal, shockwaves, debris, particles, flames)
+    this.spawnDeathEffects();
+  }
+
+  triggerDeathScreenFlash() {
+    if (!this.dom.deathFlashOverlay) return;
+    const overlay = this.dom.deathFlashOverlay;
+    overlay.classList.remove('hidden', 'fade');
+    overlay.classList.add('active');
+    if (this.deathFlashTimer) clearTimeout(this.deathFlashTimer);
+    this.deathFlashTimer = setTimeout(() => {
+      overlay.classList.remove('active');
+      overlay.classList.add('fade');
+      setTimeout(() => {
+        overlay.classList.add('hidden');
+        overlay.classList.remove('fade');
+      }, 1300);
+    }, 180);
+  }
+
+  spawnDeathEffects() {
+    const px = this.player.x;
+    const py = this.player.y;
+
+    // 1. Permanent Ground Blast Crater Decal (Charred ash & smoldering rim)
+    const scorch = new PIXI.Graphics();
+    scorch.beginFill(0xff4400, 0.55);
+    scorch.drawEllipse(0, 0, 38, 16);
+    scorch.endFill();
+    scorch.beginFill(0x0c0709, 0.88);
+    scorch.drawEllipse(0, 0, 28, 12);
+    scorch.endFill();
+    scorch.beginFill(0xffaa22, 0.8);
+    scorch.drawCircle(-9, -2, 2.2);
+    scorch.drawCircle(8, 3, 2.0);
+    scorch.drawCircle(2, -4, 1.8);
+    scorch.drawCircle(-3, 4, 1.5);
+    scorch.endFill();
+    scorch.position.set(px, py);
+    this.particleLayer.addChild(scorch);
+    this.deathDecals.push(scorch);
+
+    // 2. Fiery Expanding Plasma Shockwave Rings
+    // Ring 1: Blazing solar white-yellow inner rupture ring
+    const ring1 = new PIXI.Graphics();
+    ring1.position.set(px, py - 20);
+    this.particleLayer.addChild(ring1);
+    this.deathShockwaves.push({
+      gfx: ring1,
+      radius: 6,
+      maxRadius: 85,
+      speed: 180,
+      alpha: 1.0,
+      color: 0xffea55,
+      width: 4
+    });
+
+    // Ring 2: Deep fiery plasma shockwave expanding outward
+    const ring2 = new PIXI.Graphics();
+    ring2.position.set(px, py - 20);
+    this.particleLayer.addChild(ring2);
+    this.deathShockwaves.push({
+      gfx: ring2,
+      radius: 4,
+      maxRadius: 130,
+      speed: 135,
+      alpha: 0.9,
+      color: 0xff4400,
+      width: 5
+    });
+
+    // 3. Flame Plume attached to collapsing astronaut
+    this.deathFlameGfx = new PIXI.Graphics();
+    this.playerContainer.addChild(this.deathFlameGfx);
+
+    // 4. Cyan Oxygen Tank Rupture Flash & Sparks
+    for (let i = 0; i < 12; i++) {
+      const angle = (Math.PI * 2 / 12) * i + (Math.random() * 0.4 - 0.2);
+      const speed = 70 + Math.random() * 110;
+      const spark = new PIXI.Graphics();
+      spark.beginFill(0x43e1ff, 0.95);
+      spark.drawCircle(0, 0, 2 + Math.random() * 2);
+      spark.endFill();
+      spark.position.set(px - 10, py - 22);
+      this.particleLayer.addChild(spark);
+      this.deathParticles.push({
+        gfx: spark,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        drag: 0.92,
+        gravity: 25,
+        life: 0.45 + Math.random() * 0.35,
+        maxLife: 0.8,
+        colorType: 'cyan'
+      });
+    }
+
+    // 5. 48 Blazing Incineration Embers & Sparks (360-degree explosive burst)
+    const emberColors = [0xffffff, 0xffe066, 0xff8822, 0xff3300, 0xdd1100];
+    for (let i = 0; i < 48; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 40 + Math.random() * 260;
+      const color = emberColors[Math.floor(Math.random() * emberColors.length)];
+      const ember = new PIXI.Graphics();
+      ember.beginFill(color, 0.95);
+      ember.drawCircle(0, 0, 1.8 + Math.random() * 2.8);
+      ember.endFill();
+      ember.position.set(px + (Math.random() * 12 - 6), py - 22 + (Math.random() * 14 - 7));
+      this.particleLayer.addChild(ember);
+      this.deathParticles.push({
+        gfx: ember,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed * 0.85 - 25,
+        drag: 0.94,
+        gravity: 45,
+        life: 0.6 + Math.random() * 0.9,
+        maxLife: 1.5,
+        colorType: 'fire'
+      });
+    }
+
+    // 6. 18 Billowing Rising Smoke & Soot Clouds
+    for (let i = 0; i < 18; i++) {
+      const smoke = new PIXI.Graphics();
+      const gray = Math.floor(25 + Math.random() * 35);
+      const hexColor = (gray << 16) | ((gray - 5) << 8) | (gray + 5);
+      const rad = 6 + Math.random() * 9;
+      smoke.beginFill(hexColor, 0.65);
+      smoke.drawCircle(0, 0, rad);
+      smoke.endFill();
+      smoke.position.set(px + (Math.random() * 24 - 12), py - 18 + (Math.random() * 16 - 8));
+      this.particleLayer.addChild(smoke);
+      this.deathParticles.push({
+        gfx: smoke,
+        vx: (Math.random() * 2 - 1) * 28,
+        vy: -35 - Math.random() * 45,
+        drag: 0.97,
+        gravity: -10,
+        growth: 12,
+        rad: rad,
+        life: 0.8 + Math.random() * 0.85,
+        maxLife: 1.65,
+        colorType: 'smoke'
+      });
+    }
+
+    // 7. 8 Flying Suit Armor Debris Fragments
+    const debrisTypes = [
+      { name: 'visor', color: 0xffaa22, w: 9, h: 5 },
+      { name: 'shoulder_l', color: 0xdde8f0, w: 8, h: 7 },
+      { name: 'shoulder_r', color: 0xdde8f0, w: 8, h: 7 },
+      { name: 'pack_shard', color: 0x243340, w: 10, h: 8 },
+      { name: 'chest_plate', color: 0x1a2b38, w: 10, h: 6 },
+      { name: 'boot_l', color: 0x324050, w: 7, h: 5 },
+      { name: 'boot_r', color: 0x324050, w: 7, h: 5 },
+      { name: 'radio_antenna', color: 0x8899aa, w: 12, h: 2 }
+    ];
+
+    for (let i = 0; i < debrisTypes.length; i++) {
+      const def = debrisTypes[i];
+      const g = new PIXI.Graphics();
+      g.beginFill(def.color, 0.9);
+      g.drawRoundedRect(-def.w / 2, -def.h / 2, def.w, def.h, 1.5);
+      g.endFill();
+      g.position.set(px, py - 25);
+      this.particleLayer.addChild(g);
+
+      const angle = (Math.PI * 2 / debrisTypes.length) * i + (Math.random() * 0.5 - 0.25);
+      const speed = 65 + Math.random() * 95;
+      this.deathDebris.push({
+        gfx: g,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed * 0.7 - 40,
+        groundY: py + (Math.random() * 12 - 6),
+        rotSpeed: (Math.random() * 2 - 1) * 14,
+        landed: false,
+        life: 2.0
+      });
+    }
+  }
+
+  updateDeathSequence(dt) {
+    this.deathTimer += dt;
+    const t = this.deathTimer;
+
+    // 1. Suit Overheating, Shuddering, and Disintegration
+    if (this.playerSprite) {
+      const shakeAmt = Math.max(0, (1 - t / 0.9)) * 7;
+      this.playerSprite.position.x = (Math.random() - 0.5) * shakeAmt;
+      this.playerSprite.position.y = (Math.random() - 0.5) * shakeAmt;
+
+      // Color tint transition: White hot -> solar orange -> charred ash
+      if (t < 0.22) {
+        this.playerSprite.tint = 0xffffff;
+      } else if (t < 0.55) {
+        this.playerSprite.tint = 0xff6611;
+      } else {
+        this.playerSprite.tint = 0x221518;
+      }
+
+      // Suit collapse & dissolution into ash
+      if (t > 0.35) {
+        const dissolve = Math.max(0, 1 - (t - 0.35) / 0.65);
+        this.playerSprite.alpha = dissolve;
+        const baseScale = 0.052;
+        const currentScaleX = Math.sign(this.playerSprite.scale.x || 1) * baseScale;
+        this.playerSprite.scale.set(currentScaleX, baseScale * (0.3 + 0.7 * dissolve));
+      }
+    }
+
+    // Oxygen tank explosion
+    if (this.tankGlow) {
+      if (t > 0.15) {
+        this.tankGlow.visible = false;
+      } else {
+        this.tankGlow.alpha = 1.0;
+        this.tankGlow.scale.set(1.5);
+      }
+    }
+
+    // 2. Dynamic Flickering Fire Plume around Suit
+    if (this.deathFlameGfx && t < 1.1) {
+      const g = this.deathFlameGfx;
+      g.clear();
+      const flameAlpha = Math.max(0, 1 - t / 1.1);
+      const fH = (1 - t / 1.1) * 35;
+
+      // Outer orange flame
+      g.beginFill(0xff4400, flameAlpha * 0.7);
+      g.moveTo(-14, 0);
+      g.lineTo(-7 + (Math.random() * 4 - 2), -fH * 0.8);
+      g.lineTo(0, -fH * 1.1 - (Math.random() * 6));
+      g.lineTo(7 + (Math.random() * 4 - 2), -fH * 0.85);
+      g.lineTo(14, 0);
+      g.closePath();
+      g.endFill();
+
+      // Inner searing yellow core
+      g.beginFill(0xffdd33, flameAlpha * 0.85);
+      g.moveTo(-9, 0);
+      g.lineTo(-4 + (Math.random() * 2 - 1), -fH * 0.6);
+      g.lineTo(0, -fH * 0.85);
+      g.lineTo(4 + (Math.random() * 2 - 1), -fH * 0.6);
+      g.lineTo(9, 0);
+      g.closePath();
+      g.endFill();
+
+      g.position.set(0, -10);
+    } else if (this.deathFlameGfx) {
+      this.deathFlameGfx.clear();
+    }
+
+    // 3. Expanding Shockwaves
+    for (let i = this.deathShockwaves.length - 1; i >= 0; i--) {
+      const sw = this.deathShockwaves[i];
+      sw.radius += sw.speed * dt;
+      const progress = sw.radius / sw.maxRadius;
+      sw.alpha = Math.max(0, 1 - progress);
+
+      sw.gfx.clear();
+      sw.gfx.lineStyle(sw.width * (1 - progress * 0.5), sw.color, sw.alpha);
+      sw.gfx.drawEllipse(0, 0, sw.radius, sw.radius * 0.55);
+
+      if (progress >= 1.0) {
+        sw.gfx.destroy();
+        this.deathShockwaves.splice(i, 1);
+      }
+    }
+
+    // 4. Disintegration Particles & Smoke
+    for (let i = this.deathParticles.length - 1; i >= 0; i--) {
+      const p = this.deathParticles[i];
+      p.life -= dt;
+      p.vx *= p.drag;
+      p.vy *= p.drag;
+      p.vy += p.gravity * dt;
+
+      p.gfx.x += p.vx * dt;
+      p.gfx.y += p.vy * dt;
+
+      const alphaNorm = Math.max(0, p.life / p.maxLife);
+      p.gfx.alpha = alphaNorm;
+
+      if (p.colorType === 'smoke') {
+        const curScale = 1 + (1 - alphaNorm) * 1.6;
+        p.gfx.scale.set(curScale);
+      }
+
+      if (p.life <= 0) {
+        p.gfx.destroy();
+        this.deathParticles.splice(i, 1);
+      }
+    }
+
+    // 5. Suit Armor Debris Fragments (physics bounce and skid)
+    for (let i = this.deathDebris.length - 1; i >= 0; i--) {
+      const d = this.deathDebris[i];
+      d.life -= dt;
+
+      if (!d.landed) {
+        d.vy += 180 * dt;
+        d.gfx.x += d.vx * dt;
+        d.gfx.y += d.vy * dt;
+        d.gfx.rotation += d.rotSpeed * dt;
+
+        if (d.gfx.y >= d.groundY) {
+          d.gfx.y = d.groundY;
+          d.landed = true;
+          d.vx *= 0.3;
+          d.rotSpeed *= 0.1;
+        }
+      } else {
+        d.vx *= 0.85;
+        d.gfx.x += d.vx * dt;
+      }
+
+      if (d.life <= 0.6) {
+        d.gfx.alpha = Math.max(0, d.life / 0.6);
+      }
+
+      if (d.life <= 0) {
+        d.gfx.destroy();
+        this.deathDebris.splice(i, 1);
+      }
+    }
+
+    // 6. Camera & Ambient Sound Update
+    this.updateCamera(dt);
+    if (window.soundEngine) {
+      window.soundEngine.update(dt, this.heat, this.fire.proximity);
+    }
+
+    // 7. Transition to CRT Terminal on Animation Finish
+    if (this.deathTimer >= this.deathDuration) {
+      this.finishDeathSequence();
+    }
+  }
+
+  finishDeathSequence() {
+    if (this.state === 'GAMEOVER') return;
+    this.state = 'GAMEOVER';
+
+    if (this.playerSprite) {
+      this.playerSprite.visible = false;
+    }
+    if (this.tankGlow) {
+      this.tankGlow.visible = false;
+    }
+    if (this.deathFlameGfx) {
+      this.deathFlameGfx.clear();
+    }
+
+    this.startTerminalTypewriter(this.deathCause);
+  }
+
+  skipDeathAnimation() {
+    if (this.state !== 'DYING') return;
+    this.finishDeathSequence();
   }
 
   startTerminalTypewriter(cause) {
