@@ -17,6 +17,7 @@ reproduce_*.py
 extract_video_frames.py
 capture_gameplay.py
 verify_hud_and_sun.py
+verify_astronaut*.py
 test_*.png
 screenshot_*.png
 rec_*.png

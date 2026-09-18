@@ -366,7 +366,7 @@ class DeadSunGame {
       { name: 'sun_glow', url: 'sun_glow.png' },
       { name: 'sky_bg', url: 'background_scene_for_sun.png' },
       { name: 'fire_wall', url: 'giant_approaching1.png' },
-      { name: 'astronaut', url: 'astronaught .png' },
+      { name: 'astronaut', url: 'astronaut.png' },
       { name: 'asset1', url: 'asset1.png' },
       { name: 'asset2', url: 'asset2.png' },
       { name: 'asset3', url: 'asset3.png' },
@@ -381,7 +381,15 @@ class DeadSunGame {
         const tex = await PIXI.Assets.load(item.url);
         this.textures[item.name] = tex;
       } catch (err) {
-        console.error("Failed loading asset:", item.url, err);
+        console.warn("Failed loading asset:", item.url, err);
+        if (item.name === 'astronaut') {
+          try {
+            const fallbackTex = await PIXI.Assets.load('astronaught .png');
+            this.textures[item.name] = fallbackTex;
+          } catch (e) {
+            console.error("Failed loading fallback astronaut:", e);
+          }
+        }
       }
     }
 
@@ -601,27 +609,78 @@ class DeadSunGame {
     // Feet Shadow
     const feetShadow = new PIXI.Graphics();
     feetShadow.beginFill(0x000000, 0.45);
-    feetShadow.drawEllipse(0, 0, 15, 6);
+    feetShadow.drawEllipse(0, 0, 16, 7);
     feetShadow.endFill();
     this.playerContainer.addChild(feetShadow);
 
-    // Astronaut Sprite
+    // Astronaut Sprite (with vector astronaut suit fallback)
     if (this.textures.astronaut) {
       this.playerSprite = new PIXI.Sprite(this.textures.astronaut);
       this.playerSprite.anchor.set(0.5, 0.88);
-      this.playerSprite.scale.set(0.045);
+      this.playerSprite.scale.set(0.052);
+      this.playerContainer.addChild(this.playerSprite);
+    } else {
+      this.playerSprite = this.createVectorAstronaut();
       this.playerContainer.addChild(this.playerSprite);
     }
 
     // Cyan Oxygen Tank Glow indicator
     this.tankGlow = new PIXI.Graphics();
-    this.tankGlow.beginFill(0x43e1ff, 0.5);
-    this.tankGlow.drawCircle(-10, -20, 5);
+    this.tankGlow.beginFill(0x43e1ff, 0.65);
+    this.tankGlow.drawCircle(-10, -22, 5);
     this.tankGlow.endFill();
     this.playerContainer.addChild(this.tankGlow);
 
     this.playerContainer.position.set(this.player.x, this.player.y);
     this.entityLayer.addChild(this.playerContainer);
+  }
+
+  createVectorAstronaut() {
+    const g = new PIXI.Graphics();
+    // Life support pack (behind)
+    g.beginFill(0x2a3b4c);
+    g.drawRoundedRect(-14, -42, 10, 24, 4);
+    g.endFill();
+
+    // Suit Torso
+    g.beginFill(0xedf4f8);
+    g.drawRoundedRect(-12, -38, 24, 28, 6);
+    g.endFill();
+
+    // Suit Chest Plate / Insignia
+    g.beginFill(0x1a2b38);
+    g.drawRoundedRect(-8, -34, 16, 12, 3);
+    g.endFill();
+    g.beginFill(0x43e1ff);
+    g.drawCircle(-4, -28, 2);
+    g.beginFill(0x58f888);
+    g.drawCircle(4, -28, 2);
+    g.endFill();
+
+    // Helmet Dome
+    g.beginFill(0xffffff);
+    g.drawCircle(0, -44, 14);
+    g.endFill();
+
+    // Gold Reflective Visor
+    g.beginFill(0xffaa22);
+    g.drawRoundedRect(-8, -48, 16, 10, 4);
+    g.endFill();
+    g.beginFill(0xffe688, 0.7);
+    g.drawEllipse(-3, -46, 4, 2);
+    g.endFill();
+
+    // Legs and Boots
+    g.beginFill(0xcadbe8);
+    g.drawRoundedRect(-10, -14, 8, 14, 3);
+    g.drawRoundedRect(2, -14, 8, 14, 3);
+    g.endFill();
+    g.beginFill(0x324050);
+    g.drawRoundedRect(-12, -3, 10, 5, 2);
+    g.drawRoundedRect(2, -3, 10, 5, 2);
+    g.endFill();
+
+    return g;
   }
 
   setupInputHandlers() {

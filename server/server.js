@@ -278,7 +278,9 @@ const server = http.createServer(async (req, res) => {
   }
 
   // 4. Static File Serving (parent directory)
-  let safePath = path.normalize(path.join(STATIC_DIR, pathname));
+  let decodedPath = pathname;
+  try { decodedPath = decodeURIComponent(pathname); } catch (e) {}
+  let safePath = path.normalize(path.join(STATIC_DIR, decodedPath));
   if (!safePath.startsWith(STATIC_DIR)) {
     res.writeHead(403);
     res.end('Forbidden');
