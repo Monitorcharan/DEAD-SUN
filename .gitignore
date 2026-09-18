@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build outputs
+www/
+android/
+dist/
+
+# Test recordings, extracted frames & temporary scripts
+video_frames_full/
+video_frames_new/
+.playwright-mcp/
+*.mp4
+test_*.py
+reproduce_*.py
+extract_video_frames.py
+capture_gameplay.py
+verify_hud_and_sun.py
+test_*.png
+screenshot_*.png
+rec_*.png
+screen_*.png
+frame_*.png
+flare_*.png
+sun_crop_*.png
+
+# OS & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

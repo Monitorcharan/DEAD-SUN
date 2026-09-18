@@ -1,0 +1,81 @@
+[
+  {
+    "rank": 1,
+    "callsign": "VALKYRIE",
+    "distance": 684,
+    "time": 88.5,
+    "shelters": 14,
+    "seed": 481920145,
+    "date": "2026-09-15"
+  },
+  {
+    "rank": 2,
+    "callsign": "SOLARIS",
+    "distance": 540,
+    "time": 71.2,
+    "shelters": 11,
+    "seed": 194820392,
+    "date": "2026-09-16"
+  },
+  {
+    "rank": 3,
+    "callsign": "ORION",
+    "distance": 462,
+    "time": 62,
+    "shelters": 9,
+    "seed": 928301928,
+    "date": "2026-09-17"
+  },
+  {
+    "callsign": "VIPER",
+    "distance": 420,
+    "time": 55.4,
+    "shelters": 8,
+    "seed": 123456789,
+    "date": "2026-09-18"
+  },
+  {
+    "rank": 4,
+    "callsign": "PHOENIX",
+    "distance": 388,
+    "time": 51.4,
+    "shelters": 7,
+    "seed": 394820194,
+    "date": "2026-09-18"
+  },
+  {
+    "rank": 5,
+    "callsign": "NOVA",
+    "distance": 310,
+    "time": 42.8,
+    "shelters": 6,
+    "seed": 582019482,
+    "date": "2026-09-18"
+  },
+  {
+    "rank": 6,
+    "callsign": "GHOST",
+    "distance": 245,
+    "time": 33.1,
+    "shelters": 4,
+    "seed": 102938475,
+    "date": "2026-09-18"
+  },
+  {
+    "rank": 7,
+    "callsign": "APOLLO",
+    "distance": 190,
+    "time": 26.5,
+    "shelters": 3,
+    "seed": 692830194,
+    "date": "2026-09-18"
+  },
+  {
+    "callsign": "APEX",
+    "distance": 0,
+    "time": 0.1,
+    "shelters": 1,
+    "seed": 324099586,
+    "date": "2026-09-18"
+  }
+]

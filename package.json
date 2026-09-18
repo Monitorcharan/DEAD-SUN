@@ -1,0 +1,29 @@
+{
+  "name": "dead-sun",
+  "version": "1.0.0",
+  "description": "DEAD SUN - Standalone 2D Space Survival Action Game",
+  "main": "game.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "bundle:mobile": "node build_mobile_assets.js",
+    "cap:add": "npx cap add android",
+    "cap:sync": "npm run bundle:mobile && npx cap sync android",
+    "cap:open": "npx cap open android",
+    "cap:build": "npm run bundle:mobile && npx cap sync android && cd android && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/cli": "^6.1.2",
+    "@capacitor/core": "^6.1.2"
+  },
+  "keywords": [
+    "game",
+    "pixijs",
+    "dead-sun",
+    "capacitor",
+    "android",
+    "apk"
+  ],
+  "author": "Antigravity Pair Programmer",
+  "license": "MIT"
+}

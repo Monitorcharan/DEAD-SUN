@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#120c18">
+  <title>DEAD SUN - Shelter from the Red Giant</title>
+  <!-- Google Fonts: Orbitron, Rajdhani & Share Tech Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800;900&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <!-- PixiJS v7 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.4.2/pixi.min.js"></script>
+</head>
+<body>
+  <div id="game-wrapper">
+    <div id="game-container">
+      <!-- PixiJS Canvas will be injected here -->
+
+      <!-- In-Game HUD Overlay -->
+      <div id="hud">
+        <!-- Top Left Heat / Stamina Bar Module (Exact Match to Reference Image 2) -->
+        <div id="heat-stamina-module">
+          <!-- Row 1: Heat Capsule Gauge + Status Text -->
+          <div class="heat-gauge-row">
+            <div id="heat-capsule">
+              <div id="heat-fill"></div>
+            </div>
+            <div id="heat-status-text">HEAT PERFECT</div>
+          </div>
+          <!-- Row 2: 3-Segment Cyan Stamina Bar -->
+          <div id="stamina-bar">
+            <div class="stamina-pip" id="seg-1"></div>
+            <div class="stamina-pip" id="seg-2"></div>
+            <div class="stamina-pip" id="seg-3"></div>
+          </div>
+          <!-- Metrics -->
+          <div id="hud-metrics">
+            <div class="metric-row"><span class="m-label">DIST</span> <span class="m-val" id="val-dist">0 m</span></div>
+            <div class="metric-row"><span class="m-label">TIME</span> <span class="m-val" id="val-time">0.0 s</span></div>
+            <div class="metric-row"><span class="m-label">SHELTERS</span> <span class="m-val" id="val-shelters">0</span></div>
+          </div>
+        </div>
+
+        <!-- Objective Banner (Center-Top) -->
+        <div id="objective-banner">
+          <div class="obj-header">OBJECTIVE</div>
+          <div class="obj-text" id="obj-text">SEEK SHELTER</div>
+        </div>
+
+        <!-- Big Center Critical Warning Banner: FIND SHELTER NOW -->
+        <div id="critical-banner" class="hidden">
+          <span class="crit-bracket">&#91;</span> FIND SHELTER NOW <span class="crit-bracket">&#93;</span>
+        </div>
+
+        <!-- Solar Flare Alert Banner -->
+        <div id="flare-banner" class="hidden">
+          <span class="flare-bracket">&#91;</span> <span id="flare-text">SOLAR FLARE IMMINENT</span> <span class="flare-bracket">&#93;</span>
+        </div>
+
+        <!-- Full Screen Dynamic Heat Vignette Overlay (intensifies with temperature) -->
+        <div id="heat-vignette"></div>
+
+        <!-- Solar Flare Atmospheric Bloom Overlay -->
+        <div id="solar-flare-overlay" class="hidden"></div>
+
+        <!-- Off-Screen Supply Drop Pointer Indicator (Matching authentic gameplay) -->
+        <div id="supply-tracker" class="hidden">
+          <span class="supply-tracker-text">ALL-TERRAIN BOOTS</span>
+          <span class="supply-tracker-arrow">&#9654;</span>
+        </div>
+
+        <!-- Initial Intro Titles: OUTRUN THE FIRESTORM / SHELTER FROM THE DYING SUN -->
+        <div id="intro-title-banner" class="hidden">OUTRUN THE FIRESTORM</div>
+
+        <!-- 3, 2, 1 Countdown Display -->
+        <div id="countdown-display" class="hidden">3</div>
+
+        <!-- Speech Bubble Quip (With Tail pointing to Astronaut) -->
+        <div id="shade-quip">
+          <div id="quip-text">Glorious shade</div>
+          <div class="quip-tail"></div>
+        </div>
+
+        <!-- Bottom Controls Hint -->
+        <div id="bottom-hint">
+          WASD / arrows to move &bull; SPACE to dash &bull; stamina refills in shade
+        </div>
+
+        <!-- Pause Button Icon -->
+        <button id="btn-pause" title="Pause Game (P)">&#10074;&#10074;</button>
+
+        <!-- On-Screen Mobile Touch Controls (Left Virtual Joystick + Right Dash Button) -->
+        <div id="touch-controls-layer">
+          <div id="joystick-zone">
+            <div id="joystick-base">
+              <div id="joystick-thumb"></div>
+            </div>
+          </div>
+          <div id="action-zone">
+            <button id="touch-btn-dash" aria-label="Dash">
+              <span class="touch-dash-icon">&#9889;</span>
+              <span class="touch-dash-label">DASH</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Incoming Transmission Dialogue (Matching Video Frame 01:23) -->
+      <div id="transmission-layer" class="hidden">
+        <div id="transmission-header">
+          <span class="dot"></span> INCOMING TRANSMISSION <span class="dot"></span>
+        </div>
+        <div id="transmission-box">
+          <div class="avatar-wrapper">
+            <div class="avatar-ring">
+              <div class="avatar-icon" id="dialogue-avatar"></div>
+            </div>
+          </div>
+          <div class="dialogue-content">
+            <div id="dialogue-speaker">STAR COMMAND</div>
+            <div id="dialogue-text">Listen carefully: the dying sun bakes anything caught in it</div>
+            <div id="dialogue-prompt">press any key or tap to continue &raquo;</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tutorial Cards (COOLING ONLINE / OVERHEATING / SUPPLY DROP DETECTED) -->
+      <div id="tutorial-card" class="hidden">
+        <div class="tut-box">
+          <div class="tut-title" id="tut-title">COOLING ONLINE</div>
+          <div class="tut-body" id="tut-body">
+            Shadow is recovery: your suit's cooling systems restore here and your heat bleeds back down. Don't run ahead like crazy - take it slow and calculated. Shelter not speed keeps you alive.
+          </div>
+          <div class="tut-prompt">press any key or tap to continue &raquo;</div>
+        </div>
+      </div>
+
+      <!-- Pause Menu (Matching Image 3) -->
+      <div id="pause-menu" class="hidden">
+        <div class="pause-title">PAUSED</div>
+        <div class="pause-options">
+          <button class="pause-btn" id="btn-resume">RESUME</button>
+          <button class="pause-btn" id="btn-toggle-music">MUSIC: ON</button>
+          <button class="pause-btn" id="btn-toggle-sfx">SFX: ON</button>
+          <button class="pause-btn" id="btn-toggle-touch">TOUCH CONTROLS: AUTO</button>
+          <button class="pause-btn" id="btn-toggle-quality">QUALITY: HIGH</button>
+          <button class="pause-btn danger" id="btn-give-up">GIVE UP</button>
+        </div>
+        <div class="pause-hint">P or tap RESUME to return</div>
+      </div>
+
+      <!-- Retro CRT Field Terminal Game Over Screen (Matching Authentic Video Frames) -->
+      <div id="terminal-game-over" class="hidden">
+        <div class="crt-screen">
+          <div class="crt-scanlines"></div>
+          <div class="terminal-content">
+            <div class="term-header">STAR COMMAND &#9656; FIELD TERMINAL</div>
+            <div class="term-divider"></div>
+            <!-- Typewriter dynamic body -->
+            <pre id="term-typing-body" class="term-typewriter-text"></pre>
+            
+            <!-- Callsign Submission Row -->
+            <div id="term-callsign-box" class="term-callsign-box hidden">
+              <span class="callsign-label">CALLSIGN:</span>
+              <input type="text" id="input-callsign" maxlength="8" placeholder="PILOT" autocomplete="off" />
+              <button class="term-btn btn-submit-score" id="btn-submit-score">&#10003; TRANSMIT</button>
+              <span id="callsign-status" class="callsign-status"></span>
+            </div>
+
+            <div class="term-actions hidden" id="term-actions">
+              <button class="term-btn btn-redeploy" id="btn-redeploy">&#8635; REDEPLOY &nbsp;[R]</button>
+              <button class="term-btn btn-board" id="btn-term-leaderboard">&#9733; LEADERBOARD &nbsp;[L]</button>
+              <button class="term-btn btn-menu" id="btn-main-menu">&#8617; MAIN MENU &nbsp;[Q]</button>
+            </div>
+            <div class="term-skip-hint" id="term-skip-hint">press SPACE, ENTER or TAP to skip</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Retro CRT Global Leaderboard Modal -->
+      <div id="leaderboard-modal" class="hidden">
+        <div class="crt-screen leaderboard-screen">
+          <div class="crt-scanlines"></div>
+          <div class="terminal-content">
+            <div class="term-header">STAR COMMAND &#9656; SECTOR LEADERBOARD</div>
+            <div class="term-divider"></div>
+            <div class="leaderboard-table-container">
+              <table class="leaderboard-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>CALLSIGN</th>
+                    <th>DISTANCE</th>
+                    <th>TIME</th>
+                    <th>SHELTERS</th>
+                  </tr>
+                </thead>
+                <tbody id="leaderboard-rows">
+                  <!-- Dynamically populated -->
+                </tbody>
+              </table>
+            </div>
+            <div class="term-actions">
+              <button class="term-btn btn-menu" id="btn-close-leaderboard">&#8617; RETURN &nbsp;[ESC]</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Start Splash Screen -->
+      <div id="start-splash">
+        <div class="splash-sun"></div>
+        <h1 class="splash-title">DEAD SUN</h1>
+        <div class="splash-subtitle">SHELTER FROM THE RED GIANT</div>
+        <div class="splash-motto">flee the firestorm &bull; shadow is life</div>
+        <div class="splash-buttons">
+          <button class="action-btn" id="btn-start">CLICK TO BEGIN</button>
+          <button class="action-secondary-btn" id="btn-splash-leaderboard">&#9733; LEADERBOARD</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="audio.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
