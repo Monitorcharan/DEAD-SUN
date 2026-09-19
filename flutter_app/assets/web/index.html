@@ -150,7 +150,7 @@
         </div>
       </div>
 
-      <!-- Pause Menu (Matching Image 3) -->
+      <!-- Pause Menu -->
       <div id="pause-menu" class="hidden">
         <div class="pause-title">PAUSED</div>
         <div class="pause-options">
@@ -160,13 +160,30 @@
           <button class="pause-btn" id="btn-toggle-touch">TOUCH CONTROLS: AUTO</button>
           <button class="pause-btn" id="btn-pause-controls">&#9881; JOYSTICK SETTINGS</button>
           <button class="pause-btn" id="btn-toggle-quality">QUALITY: HIGH</button>
-          <!-- Difficulty Selector Row -->
-          <div class="difficulty-row" id="pause-difficulty-row">
-            <span class="diff-label">DIFFICULTY:</span>
-            <button class="diff-btn" id="pause-diff-easy" data-diff="EASY">EASY</button>
-            <button class="diff-btn diff-active" id="pause-diff-medium" data-diff="MEDIUM">MEDIUM</button>
-            <button class="diff-btn" id="pause-diff-hardcore" data-diff="HARDCORE">HARDCORE</button>
+
+          <!-- Difficulty Custom Dropdown (Pause) -->
+          <div class="diff-dropdown-wrap" id="pause-diff-wrap">
+            <div class="diff-dropdown-trigger" id="pause-diff-trigger">
+              <span class="diff-dd-label">DIFFICULTY</span>
+              <span class="diff-dd-value" id="pause-diff-value">MEDIUM</span>
+              <span class="diff-dd-arrow">&#9660;</span>
+            </div>
+            <div class="diff-dropdown-menu hidden" id="pause-diff-menu">
+              <div class="diff-dd-item" data-diff="EASY" id="pause-dd-easy">
+                <span class="diff-dd-item-name">EASY</span>
+                <span class="diff-dd-item-desc">Slower sun &bull; Wider gaps &bull; No solar flares</span>
+              </div>
+              <div class="diff-dd-item" data-diff="MEDIUM" id="pause-dd-medium">
+                <span class="diff-dd-item-name">MEDIUM</span>
+                <span class="diff-dd-item-desc">Standard challenge &bull; Solar flares at 26s</span>
+              </div>
+              <div class="diff-dd-item diff-dd-hardcore" data-diff="HARDCORE" id="pause-dd-hardcore">
+                <span class="diff-dd-item-name">HARDCORE</span>
+                <span class="diff-dd-item-desc">Relentless fire &bull; Fast heat &bull; Flares at 14s</span>
+              </div>
+            </div>
           </div>
+
           <button class="pause-btn danger" id="btn-give-up">GIVE UP</button>
         </div>
         <div class="pause-hint">P or tap RESUME to return</div>
@@ -247,25 +264,28 @@
           <div class="splash-reg-hint">Real-time telemetry & leaderboard will register under this pilot</div>
         </div>
 
-        <!-- Difficulty Selector on Splash -->
-        <div class="splash-difficulty">
-          <div class="splash-diff-label">SELECT DIFFICULTY</div>
-          <div class="splash-diff-row">
-            <button class="splash-diff-btn" id="splash-diff-easy" data-diff="EASY">
-              <span class="sdiff-icon">&#9651;</span>
-              <span class="sdiff-name">EASY</span>
-              <span class="sdiff-desc">Slower sun · Wider gaps</span>
-            </button>
-            <button class="splash-diff-btn sdiff-selected" id="splash-diff-medium" data-diff="MEDIUM">
-              <span class="sdiff-icon">&#9654;</span>
-              <span class="sdiff-name">MEDIUM</span>
-              <span class="sdiff-desc">Standard challenge</span>
-            </button>
-            <button class="splash-diff-btn sdiff-hardcore" id="splash-diff-hardcore" data-diff="HARDCORE">
-              <span class="sdiff-icon">&#9670;</span>
-              <span class="sdiff-name">HARDCORE</span>
-              <span class="sdiff-desc">Relentless · No mercy</span>
-            </button>
+        <!-- Difficulty Custom Dropdown (Splash) -->
+        <div class="splash-diff-section">
+          <div class="diff-dropdown-wrap" id="splash-diff-wrap">
+            <div class="diff-dropdown-trigger" id="splash-diff-trigger">
+              <span class="diff-dd-label">DIFFICULTY</span>
+              <span class="diff-dd-value" id="splash-diff-value">MEDIUM</span>
+              <span class="diff-dd-arrow">&#9660;</span>
+            </div>
+            <div class="diff-dropdown-menu hidden" id="splash-diff-menu">
+              <div class="diff-dd-item" data-diff="EASY" id="splash-dd-easy">
+                <span class="diff-dd-item-name">EASY</span>
+                <span class="diff-dd-item-desc">Slower sun &bull; Wider gaps &bull; No solar flares</span>
+              </div>
+              <div class="diff-dd-item" data-diff="MEDIUM" id="splash-dd-medium">
+                <span class="diff-dd-item-name">MEDIUM</span>
+                <span class="diff-dd-item-desc">Standard challenge &bull; Solar flares at 26s</span>
+              </div>
+              <div class="diff-dd-item diff-dd-hardcore" data-diff="HARDCORE" id="splash-dd-hardcore">
+                <span class="diff-dd-item-name">HARDCORE</span>
+                <span class="diff-dd-item-desc">Relentless fire &bull; Fast heat &bull; Flares at 14s</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -275,6 +295,7 @@
           <button class="action-secondary-btn" id="btn-splash-controls">&#9881; CONTROLS</button>
         </div>
       </div>
+
 
       <!-- Mobile Joystick & Controls Customization Modal -->
       <div id="controls-modal" class="hidden">

@@ -324,13 +324,9 @@ class DeadSunGame {
       valCtrlDashSize: document.getElementById('val-ctrl-dash-size'),
       btnSideLeft: document.getElementById('btn-side-left'),
       btnSideRight: document.getElementById('btn-side-right'),
-      // Difficulty buttons
-      pauseDiffEasy: document.getElementById('pause-diff-easy'),
-      pauseDiffMedium: document.getElementById('pause-diff-medium'),
-      pauseDiffHardcore: document.getElementById('pause-diff-hardcore'),
-      splashDiffEasy: document.getElementById('splash-diff-easy'),
-      splashDiffMedium: document.getElementById('splash-diff-medium'),
-      splashDiffHardcore: document.getElementById('splash-diff-hardcore')
+      // Difficulty dropdowns (splash + pause) — no individual button refs needed; wired dynamically
+      splashDiffWrap: document.getElementById('splash-diff-wrap'),
+      pauseDiffWrap: document.getElementById('pause-diff-wrap')
     };
 
     // Terminal typewriter timers & state
@@ -1488,28 +1484,53 @@ class DeadSunGame {
   }
 
   /* =======================================================
-     DIFFICULTY SYSTEM
+     DIFFICULTY SYSTEM — Custom Dropdown
      ======================================================= */
   _setupDifficultyButtons() {
-    // Refresh UI to match saved difficulty
-    this._syncDifficultyUI();
+    // Wire up both dropdowns (splash + pause) using the same helper
+    this._wireDiffDropdown('splash-diff-trigger', 'splash-diff-menu', 'splash-diff-value', 'splash-diff-wrap');
+    this._wireDiffDropdown('pause-diff-trigger',  'pause-diff-menu',  'pause-diff-value',  'pause-diff-wrap');
 
-    // Splash buttons
-    const splashBtns = [this.dom.splashDiffEasy, this.dom.splashDiffMedium, this.dom.splashDiffHardcore];
-    splashBtns.forEach(btn => {
-      if (!btn) return;
-      btn.addEventListener('click', () => {
-        this._setDifficulty(btn.dataset.diff);
-      });
+    // Close any open dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.diff-dropdown-wrap')) {
+        document.querySelectorAll('.diff-dropdown-menu').forEach(m => m.classList.add('hidden'));
+        document.querySelectorAll('.diff-dropdown-wrap').forEach(w => w.classList.remove('open'));
+      }
     });
 
-    // Pause menu buttons
-    const pauseBtns = [this.dom.pauseDiffEasy, this.dom.pauseDiffMedium, this.dom.pauseDiffHardcore];
-    pauseBtns.forEach(btn => {
-      if (!btn) return;
-      btn.addEventListener('click', () => {
-        this._setDifficulty(btn.dataset.diff);
-        if (window.soundEngine) window.soundEngine.playUIClick?.();
+    // Sync UI to current saved difficulty
+    this._syncDifficultyUI();
+  }
+
+  _wireDiffDropdown(triggerId, menuId, valueId, wrapperId) {
+    const trigger = document.getElementById(triggerId);
+    const menu    = document.getElementById(menuId);
+    const wrap    = document.getElementById(wrapperId);
+    if (!trigger || !menu || !wrap) return;
+
+    // Toggle open/close on trigger click
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = !menu.classList.contains('hidden');
+      // Close all first
+      document.querySelectorAll('.diff-dropdown-menu').forEach(m => m.classList.add('hidden'));
+      document.querySelectorAll('.diff-dropdown-wrap').forEach(w => w.classList.remove('open'));
+      if (!isOpen) {
+        menu.classList.remove('hidden');
+        wrap.classList.add('open');
+      }
+    });
+
+    // Wire each item in this dropdown
+    menu.querySelectorAll('.diff-dd-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const diffKey = item.dataset.diff;
+        this._setDifficulty(diffKey);
+        // Close the dropdown after selection
+        menu.classList.add('hidden');
+        wrap.classList.remove('open');
       });
     });
   }
@@ -1523,19 +1544,23 @@ class DeadSunGame {
 
   _syncDifficultyUI() {
     const d = this.difficulty;
+    const label = d; // e.g. 'EASY', 'MEDIUM', 'HARDCORE'
 
-    // Pause buttons — toggle .diff-active class
-    const pauseMap = { EASY: this.dom.pauseDiffEasy, MEDIUM: this.dom.pauseDiffMedium, HARDCORE: this.dom.pauseDiffHardcore };
-    Object.entries(pauseMap).forEach(([key, btn]) => {
-      if (!btn) return;
-      btn.classList.toggle('diff-active', key === d);
-    });
+    // Update both dropdowns
+    ['splash', 'pause'].forEach(prefix => {
+      const valueEl = document.getElementById(`${prefix}-diff-value`);
+      const wrap    = document.getElementById(`${prefix}-diff-wrap`);
+      const menu    = document.getElementById(`${prefix}-diff-menu`);
 
-    // Splash buttons — toggle .sdiff-selected class
-    const splashMap = { EASY: this.dom.splashDiffEasy, MEDIUM: this.dom.splashDiffMedium, HARDCORE: this.dom.splashDiffHardcore };
-    Object.entries(splashMap).forEach(([key, btn]) => {
-      if (!btn) return;
-      btn.classList.toggle('sdiff-selected', key === d);
+      if (valueEl) valueEl.textContent = label;
+      if (wrap)    wrap.setAttribute('data-active', d);
+
+      // Mark selected item within this dropdown
+      if (menu) {
+        menu.querySelectorAll('.diff-dd-item').forEach(item => {
+          item.classList.toggle('diff-dd-selected', item.dataset.diff === d);
+        });
+      }
     });
   }
 
