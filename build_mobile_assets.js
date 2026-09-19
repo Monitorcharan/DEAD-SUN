@@ -1,48 +1,57 @@
 /**
- * Prepares and packages all web assets into the 'www' directory for Capacitor APK compilation.
+ * Prepares and packages all web assets into the 'www' directory and 'flutter_app/assets/web/' directory.
  */
 const fs = require('fs');
 const path = require('path');
 
 const ROOT_DIR = __dirname;
 const WWW_DIR = path.join(ROOT_DIR, 'www');
+const FLUTTER_WEB_DIR = path.join(ROOT_DIR, 'flutter_app', 'assets', 'web');
 
-// Clean or create www directory
-if (fs.existsSync(WWW_DIR)) {
-  fs.rmSync(WWW_DIR, { recursive: true, force: true });
+const TARGET_DIRS = [WWW_DIR, FLUTTER_WEB_DIR];
+
+for (const target of TARGET_DIRS) {
+  if (!fs.existsSync(target)) {
+    fs.mkdirSync(target, { recursive: true });
+  }
 }
-fs.mkdirSync(WWW_DIR, { recursive: true });
 
-// Essential Game Files to bundle into APK
+// Essential Game Code & Bundles
 const CORE_FILES = [
   'index.html',
   'style.css',
   'game.js',
-  'audio.js'
+  'audio.js',
+  'pixi.min.js'
 ];
 
-// Copy Core Files
 for (const file of CORE_FILES) {
   const src = path.join(ROOT_DIR, file);
-  const dest = path.join(WWW_DIR, file);
   if (fs.existsSync(src)) {
-    fs.copyFileSync(src, dest);
-    console.log(`[PACK] Copied ${file} -> www/`);
+    for (const target of TARGET_DIRS) {
+      fs.copyFileSync(src, path.join(target, file));
+    }
+    console.log(`[PACK] Copied ${file} -> targets`);
   } else {
     console.warn(`[WARN] Missing core file: ${file}`);
   }
 }
 
-// Copy All Image Assets (*.png)
+// Copy All Image Assets (*.png, *.jpg)
 const rootFiles = fs.readdirSync(ROOT_DIR);
 let assetCount = 0;
 for (const file of rootFiles) {
-  if (file.toLowerCase().endsWith('.png') && !file.startsWith('screenshot_') && !file.startsWith('test_')) {
+  const lower = file.toLowerCase();
+  if ((lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.svg')) &&
+      !file.startsWith('screenshot_') &&
+      !file.startsWith('test_')) {
     const src = path.join(ROOT_DIR, file);
-    const dest = path.join(WWW_DIR, file);
-    fs.copyFileSync(src, dest);
+    for (const target of TARGET_DIRS) {
+      fs.copyFileSync(src, path.join(target, file));
+    }
     assetCount++;
   }
 }
-console.log(`[PACK] Copied ${assetCount} game assets (.png) -> www/`);
-console.log(`[READY] Android APK web bundle prepared in 'www/'!`);
+console.log(`[PACK] Copied ${assetCount} game assets to targets!`);
+console.log(`[READY] Assets successfully synced to www/ and flutter_app/assets/web/!`);
+

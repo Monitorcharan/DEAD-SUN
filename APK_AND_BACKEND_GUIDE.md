@@ -90,11 +90,11 @@ Here are our recommended production hosting options ranked by ease of use and co
   1. Push this project to GitHub.
   2. Create a new **Web Service** on Render or Railway.
   3. Set:
-     - **Root Directory**: `server`
+     - **Root Directory**: leave blank (or `.`) so all game files and server code are deployed together
      - **Build Command**: `npm install`
-     - **Start Command**: `node server.js`
-  4. Once deployed, you will get an HTTPS URL (e.g., `https://dead-sun-server.onrender.com`).
-  5. In `game.js`, update the endpoint in `endpoints` array to include your Render URL!
+     - **Start Command**: `node server/server.js` (or `npm start`)
+  4. Once deployed, you will get an HTTPS URL (e.g., `https://dead-sun.onrender.com`).
+  5. Both the entire game (with all visual assets and responsive gameplay) AND the dedicated pilot leaderboard are hosted seamlessly!
 
 ### 2. DigitalOcean / Hetzner VPS (Maximum Control & Low Cost)
 - **Cost**: $4 – $5/month

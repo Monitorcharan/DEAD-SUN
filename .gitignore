@@ -3,9 +3,9 @@ node_modules/
 package-lock.json
 
 # Build outputs
-www/
-android/
-dist/
+/www/
+/android/
+/dist/
 
 # Test recordings, extracted frames & temporary scripts
 video_frames_full/
@@ -13,13 +13,12 @@ video_frames_new/
 video_death*/
 .playwright-mcp/
 *.mp4
+*.apk
 test_*.py
 reproduce_*.py
+verify_*.py
 extract_video_frames.py
 capture_gameplay.py
-verify_hud_and_sun.py
-verify_astronaut*.py
-verify_death*.py
 test_*.png
 screenshot_*.png
 rec_*.png

@@ -11,7 +11,24 @@ const http = require('http');
 
 const PORT = process.env.PORT || 3000;
 const DB_FILE = path.join(__dirname, 'scores.json');
-const STATIC_DIR = path.resolve(__dirname, '..');
+
+// Auto-detect static assets directory (works whether run from root, server, or Render cloud)
+function resolveStaticDir() {
+  const candidates = [
+    process.env.STATIC_DIR,
+    path.resolve(__dirname, '..'),
+    __dirname,
+    path.resolve(__dirname, '../www'),
+    path.resolve(process.cwd())
+  ];
+  for (const cand of candidates) {
+    if (cand && fs.existsSync(path.join(cand, 'index.html'))) {
+      return cand;
+    }
+  }
+  return path.resolve(__dirname, '..');
+}
+const STATIC_DIR = resolveStaticDir();
 
 // Real Pilot Leaderboard (Zero fake/placeholder scores)
 const DEFAULT_SCORES = [];
@@ -277,29 +294,81 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 4. Static File Serving (parent directory)
+  // 4. POST /api/admin/clear-database & /api/reset-scores (Wipe entire database as requested)
+  if (req.method === 'POST' && (pathname === '/api/admin/clear-database' || pathname === '/api/reset-scores')) {
+    try {
+      scoresCache = [];
+      saveScores([]);
+      if (pgPool) {
+        try {
+          await pgPool.query('TRUNCATE TABLE leaderboard RESTART IDENTITY;');
+          console.log('[DATABASE] PostgreSQL leaderboard table truncated.');
+        } catch (pgErr) {
+          console.error('[DATABASE] Failed to truncate table:', pgErr.message);
+        }
+      }
+      console.log('[DATABASE] All leaderboard data wiped clean.');
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok', message: 'Leaderboard database cleared successfully', count: 0 }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'error', message: err.message }));
+    }
+    return;
+  }
+
+  // 5. Static File Serving with Security, CORS & Caching
   let decodedPath = pathname;
   try { decodedPath = decodeURIComponent(pathname); } catch (e) {}
-  let safePath = path.normalize(path.join(STATIC_DIR, decodedPath));
+
+  // Strict path traversal prevention
+  const cleanPath = path.normalize(decodedPath).replace(/^(\.\.[\/\\])+/, '');
+  let safePath = path.resolve(STATIC_DIR, '.' + cleanPath);
+
   if (!safePath.startsWith(STATIC_DIR)) {
-    res.writeHead(403);
+    res.writeHead(403, { 'Content-Type': 'text/plain' });
     res.end('Forbidden');
     return;
   }
 
-  // Default to index.html
-  if (fs.existsSync(safePath) && fs.statSync(safePath).isDirectory()) {
-    safePath = path.join(safePath, 'index.html');
-  }
+  // Default directory to index.html
+  try {
+    if (fs.existsSync(safePath) && fs.statSync(safePath).isDirectory()) {
+      safePath = path.join(safePath, 'index.html');
+    }
 
-  if (fs.existsSync(safePath) && fs.statSync(safePath).isFile()) {
-    const ext = path.extname(safePath).toLowerCase();
-    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-    res.writeHead(200, { 'Content-Type': contentType });
-    fs.createReadStream(safePath).pipe(res);
-  } else {
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('404 Not Found');
+    if (fs.existsSync(safePath) && fs.statSync(safePath).isFile()) {
+      const ext = path.extname(safePath).toLowerCase();
+      const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+
+      // Enhanced headers for game performance and asset security
+      const headers = {
+        'Content-Type': contentType,
+        'Access-Control-Allow-Origin': '*',
+        'Cross-Origin-Resource-Policy': 'cross-origin'
+      };
+
+      // Cache assets (images, css, js) for 1 hour for fast loading
+      if (ext !== '.html') {
+        headers['Cache-Control'] = 'public, max-age=3600';
+      } else {
+        headers['Cache-Control'] = 'no-cache';
+      }
+
+      res.writeHead(200, headers);
+      const stream = fs.createReadStream(safePath);
+      stream.on('error', (streamErr) => {
+        if (!res.headersSent) res.writeHead(500);
+        res.end();
+      });
+      stream.pipe(res);
+    } else {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('404 Not Found');
+    }
+  } catch (err) {
+    res.writeHead(500, { 'Content-Type': 'text/plain' });
+    res.end('Server Error');
   }
 });
 
