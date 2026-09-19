@@ -8,7 +8,7 @@ const V_WIDTH = 1280;
 const V_HEIGHT = 720;
 const HORIZON_Y = 145;
 const PLAY_MIN_Y = 175;
-const PLAY_MAX_Y = 655;
+const PLAY_MAX_Y = 545;
 
 // Physics & Gameplay Constants
 const PLAYER_BASE_SPEED = 150;
@@ -135,12 +135,15 @@ class DeadSunGame {
     // Camera
     this.camera = {
       x: 0,
+      y: 0,
       targetX: 0,
+      targetY: 0,
       zoom: 1.28,
       shakeIntensity: 0,
       shakeDecay: 0.92,
       shakeOffset: { x: 0, y: 0 }
     };
+    this.lastSpawnLane = -1;
 
     // Obstacles, Lava Pools, Supplies
     this.obstacles = [];
@@ -777,15 +780,15 @@ class DeadSunGame {
     // 1. Single Continuous Smooth Sky Gradient (Zero bands, zero overlapping cuts, perfect continuity)
     const skyCanvas = document.createElement('canvas');
     skyCanvas.width = 4;
-    skyCanvas.height = HORIZON_Y;
+    skyCanvas.height = 360;
     const sCtx = skyCanvas.getContext('2d');
-    const sGrad = sCtx.createLinearGradient(0, 0, 0, HORIZON_Y);
+    const sGrad = sCtx.createLinearGradient(0, 0, 0, 360);
     sGrad.addColorStop(0.0, '#0c071d');  // deep midnight purple-navy
-    sGrad.addColorStop(0.42, '#180929'); // cosmic purple
-    sGrad.addColorStop(0.74, '#2a0e28'); // dark plum maroon
+    sGrad.addColorStop(0.40, '#180929'); // cosmic purple
+    sGrad.addColorStop(0.72, '#2a0e28'); // dark plum maroon
     sGrad.addColorStop(1.0, '#3a1329');  // warm atmospheric horizon edge
     sCtx.fillStyle = sGrad;
-    sCtx.fillRect(0, 0, 4, HORIZON_Y);
+    sCtx.fillRect(0, 0, 4, 360);
 
     const skyTex = PIXI.Texture.from(skyCanvas);
     const skySprite = new PIXI.Sprite(skyTex);
@@ -1740,7 +1743,10 @@ class DeadSunGame {
     this.fire.speed = 95;
 
     this.camera.x = 0;
+    this.camera.y = 0;
     this.camera.targetX = 0;
+    this.camera.targetY = 0;
+    this.lastSpawnLane = -1;
 
     // Reset Obstacles, Lava, Supplies
     for (const obs of this.obstacles) {
@@ -1760,7 +1766,7 @@ class DeadSunGame {
     this.nextSupplyX = 1300;
 
     // Spawn start shelter (Asset 1 with blue sphere)
-    this.spawnShelterOfType(1, 200, 240);
+    this.spawnShelterOfType(1, 200, 210);
 
     // Spawn shelters ahead
     for (let i = 0; i < 7; i++) {
@@ -2043,29 +2049,105 @@ class DeadSunGame {
     return obstacleObj;
   }
 
+  canSpawnObstacleAt(x, y, w, h) {
+    const bufferX = 40;
+    const bufferY = 30;
+    for (const obs of this.obstacles) {
+      const ox = obs.x;
+      const oy = obs.y;
+      const ow = obs.w || 150;
+      const oh = (obs.solidH || 80) + (obs.shadowH || 100);
+      if (x < ox + ow + bufferX &&
+          x + w + bufferX > ox &&
+          y < oy + oh + bufferY &&
+          y + h + bufferY > oy) {
+        return false;
+      }
+    }
+    for (const lava of this.lavaPools) {
+      if (Math.abs(x - lava.x) < 70 && Math.abs(y - lava.y) < 50) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   spawnNextObstacle() {
-    const typeId = Math.floor(Math.random() * 7) + 1;
-    const spec = ASSET_SPECS[typeId];
-    const scale = 0.48;
-    const solidH = spec.solidH * scale;
-    const shadowH = spec.shadowH * scale;
+    // Safe 3-Lane Staggered Generator (Top, Mid, Bottom)
+    // Ensures obstacles are never stacked closely and bottom lane never clips mobile display
+    const laneId = (this.lastSpawnLane === 0) ? (Math.random() < 0.5 ? 1 : 2) :
+                   (this.lastSpawnLane === 2) ? (Math.random() < 0.5 ? 0 : 1) :
+                   (Math.random() < 0.5 ? 0 : 2);
+    this.lastSpawnLane = laneId;
 
-    const yLane = PLAY_MIN_Y + Math.random() * (PLAY_MAX_Y - solidH - shadowH - PLAY_MIN_Y);
-    const xPos = this.nextSpawnX + Math.random() * 70;
-
-    this.spawnShelterOfType(typeId, xPos, yLane);
-    this.nextSpawnX = xPos + spec.w * scale + 130 + Math.random() * 110;
-
-    // Chance to spawn Lava pool in between shelters
-    if (xPos > this.nextLavaX) {
-      this.spawnLavaPool(xPos + 60, PLAY_MIN_Y + Math.random() * (PLAY_MAX_Y - PLAY_MIN_Y - 80));
-      this.nextLavaX = xPos + 350 + Math.random() * 300;
+    // Pick asset suitable for lane height:
+    // Tall monolithic assets (1, 3) must be in top/mid lanes; compact assets (2, 4, 7, 6) can be anywhere
+    let typeId;
+    if (laneId === 0) {
+      typeId = Math.random() < 0.45 ? 1 : (Math.floor(Math.random() * 6) + 2); // 1 to 7
+    } else if (laneId === 1) {
+      typeId = [2, 3, 4, 5, 6, 7][Math.floor(Math.random() * 6)];
+    } else {
+      // Bottom lane: only compact shelters (types 2, 4, 7, 6) that comfortably fit on mobile screen
+      typeId = [2, 4, 7, 6][Math.floor(Math.random() * 4)];
     }
 
-    // Chance to spawn Supply Drop ahead
+    const spec = ASSET_SPECS[typeId];
+    const scale = 0.48;
+    const totalW = spec.w * scale;
+    const solidH = spec.solidH * scale;
+    const shadowH = spec.shadowH * scale;
+    const totalH = solidH + shadowH;
+
+    // Strict vertical clamping: absolute maximum bottom is 515
+    const maxBottom = 515;
+    let yLane;
+    if (laneId === 0) {
+      yLane = PLAY_MIN_Y + Math.random() * 30; // 175 - 205
+    } else if (laneId === 1) {
+      yLane = 245 + Math.random() * 30; // 245 - 275
+    } else {
+      yLane = Math.min(365, maxBottom - totalH); // 345 - 365
+    }
+
+    // Double check safe bottom bound
+    if (yLane + totalH > maxBottom) {
+      yLane = maxBottom - totalH;
+    }
+    if (yLane < PLAY_MIN_Y) {
+      yLane = PLAY_MIN_Y;
+    }
+
+    let xPos = this.nextSpawnX + Math.random() * 30;
+
+    // Verify spacing clearance to guarantee obstacles are never stacked closely
+    if (!this.canSpawnObstacleAt(xPos, yLane, totalW, totalH)) {
+      xPos += 60;
+    }
+
+    this.spawnShelterOfType(typeId, xPos, yLane);
+
+    // Rhythmic advance: denser flow (+more obstacles) while preserving clean lane clearance
+    this.nextSpawnX = xPos + totalW * 0.70 + 75 + Math.random() * 55;
+
+    // Staggered Lava Hazard Pools (in alternating lanes with verified clearance)
+    if (xPos > this.nextLavaX) {
+      const hazardLaneId = (laneId === 1) ? (Math.random() < 0.5 ? 0 : 2) : 1;
+      let lavaY = (hazardLaneId === 0) ? (PLAY_MIN_Y + 15 + Math.random() * 30) :
+                  (hazardLaneId === 1) ? (280 + Math.random() * 40) :
+                  (390 + Math.random() * 40);
+      const lavaX = xPos + totalW * 0.5 + 40;
+      if (this.canSpawnObstacleAt(lavaX - 60, lavaY - 30, 120, 60)) {
+        this.spawnLavaPool(lavaX, lavaY);
+      }
+      this.nextLavaX = xPos + 220 + Math.random() * 180;
+    }
+
+    // Supply Drop Caches
     if (xPos > this.nextSupplyX) {
-      this.spawnSupplyDrop(xPos + 120, PLAY_MIN_Y + 40 + Math.random() * (PLAY_MAX_Y - PLAY_MIN_Y - 100));
-      this.nextSupplyX = xPos + 1000 + Math.random() * 600;
+      const supY = PLAY_MIN_Y + 30 + Math.random() * (PLAY_MAX_Y - PLAY_MIN_Y - 70);
+      this.spawnSupplyDrop(xPos + 90, supY);
+      this.nextSupplyX = xPos + 850 + Math.random() * 450;
     }
   }
 
@@ -2672,7 +2754,7 @@ class DeadSunGame {
     this.fireBodyGfx.clear();
 
     const stepY = 22;
-    const count = Math.ceil(V_HEIGHT / stepY) + 1;
+    const count = Math.ceil((V_HEIGHT * 2) / stepY) + 1;
     const points = [];
 
     for (let i = 0; i <= count; i++) {
@@ -2742,6 +2824,11 @@ class DeadSunGame {
     const targetCamX = this.player.x - vW * 0.32;
     this.camera.x += (targetCamX - this.camera.x) * Math.min(1, dt * 6);
 
+    // Dynamic Vertical Camera Tracking (Follows player smoothly with soft boundary damping)
+    const midY = (PLAY_MIN_Y + PLAY_MAX_Y) * 0.5;
+    const targetCamY = Math.max(-20, Math.min(55, (this.player.y - midY) * 0.38));
+    this.camera.y += (targetCamY - this.camera.y) * Math.min(1, dt * 4.5);
+
     if (this.camera.shakeIntensity > 0.1) {
       this.camera.shakeOffset.x = (Math.random() * 2 - 1) * this.camera.shakeIntensity;
       this.camera.shakeOffset.y = (Math.random() * 2 - 1) * this.camera.shakeIntensity;
@@ -2755,7 +2842,19 @@ class DeadSunGame {
     const zoom = this.camera.zoom || 1.28;
     this.worldLayer.scale.set(zoom);
     this.worldLayer.position.x = -this.camera.x * zoom + this.camera.shakeOffset.x;
-    this.worldLayer.position.y = HORIZON_Y * (1 - zoom) + this.camera.shakeOffset.y;
+    this.worldLayer.position.y = HORIZON_Y * (1 - zoom) - this.camera.y * zoom + this.camera.shakeOffset.y;
+
+    const screenHorizonY = HORIZON_Y - this.camera.y * zoom;
+
+    if (this.horizonLine) {
+      this.horizonLine.position.y = screenHorizonY - HORIZON_Y;
+    }
+    if (this.skySprite) {
+      this.skySprite.height = Math.max(HORIZON_Y, screenHorizonY + 2);
+    }
+    if (this.sunContainer) {
+      this.sunContainer.position.y = this.sunBaseY + (screenHorizonY - HORIZON_Y) * 0.32;
+    }
 
     if (this.groundGfx) {
       this.groundGfx.position.x = this.camera.x;
@@ -2866,7 +2965,7 @@ class DeadSunGame {
 
     const zoom = this.camera.zoom || 1.28;
     const screenX = (this.player.x - this.camera.x) * zoom;
-    const screenY = HORIZON_Y * (1 - zoom) + (this.player.y - 58) * zoom;
+    const screenY = this.worldLayer.position.y + (this.player.y - 58) * zoom;
 
     const vW = this.vWidth || 1280;
     const clampedX = Math.max(160, Math.min(vW - 160, screenX));
