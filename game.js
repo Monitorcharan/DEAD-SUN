@@ -18,11 +18,42 @@ const DASH_COOLDOWN = 1.1; // seconds
 const PLAYER_COLLISION_RADIUS = 14;
 const PLAYER_FEET_OFFSET = 0;
 
-const SUN_HEAT_RATE = 0.22; // heat gain/sec in sun
+const SUN_HEAT_RATE = 0.22; // heat gain/sec in sun (MEDIUM default)
 const SHADE_COOL_BASE = 0.34;
 const SHADE_COOL_EXP = 1.585;
 const STAMINA_REGEN_RATE = 0.9; // pips/sec in shade
 const MAX_STAMINA = 3;
+
+// Difficulty Profiles — applied at game start
+const DIFFICULTY_PROFILES = {
+  EASY: {
+    fireBaseSpeed: 68,         // slower fire pursuit
+    heatRate: 0.13,            // slower overheating
+    shadeCoolBase: 0.42,       // faster cooling in shade
+    obstacleSpacing: 80,       // extra px between formations
+    flareTimer: 9999,          // no solar flares
+    lavaFrequency: 0.5,        // 50% fewer lava pools in formations
+    label: 'EASY'
+  },
+  MEDIUM: {
+    fireBaseSpeed: 95,
+    heatRate: 0.22,
+    shadeCoolBase: 0.34,
+    obstacleSpacing: 0,
+    flareTimer: 26.0,
+    lavaFrequency: 1.0,
+    label: 'MEDIUM'
+  },
+  HARDCORE: {
+    fireBaseSpeed: 138,        // relentless fire
+    heatRate: 0.36,            // fast overheating
+    shadeCoolBase: 0.26,       // slower cooling
+    obstacleSpacing: -40,      // tighter gaps between formations
+    flareTimer: 14.0,          // solar flares start sooner
+    lavaFrequency: 1.4,        // 40% more lava pool spawns
+    label: 'HARDCORE'
+  }
+};
 
 // Asset Metadata for Shelter Obstacles
 const ASSET_SPECS = {
@@ -292,7 +323,14 @@ class DeadSunGame {
       valCtrlJoyY: document.getElementById('val-ctrl-joy-y'),
       valCtrlDashSize: document.getElementById('val-ctrl-dash-size'),
       btnSideLeft: document.getElementById('btn-side-left'),
-      btnSideRight: document.getElementById('btn-side-right')
+      btnSideRight: document.getElementById('btn-side-right'),
+      // Difficulty buttons
+      pauseDiffEasy: document.getElementById('pause-diff-easy'),
+      pauseDiffMedium: document.getElementById('pause-diff-medium'),
+      pauseDiffHardcore: document.getElementById('pause-diff-hardcore'),
+      splashDiffEasy: document.getElementById('splash-diff-easy'),
+      splashDiffMedium: document.getElementById('splash-diff-medium'),
+      splashDiffHardcore: document.getElementById('splash-diff-hardcore')
     };
 
     // Terminal typewriter timers & state
@@ -302,6 +340,10 @@ class DeadSunGame {
 
     // Pilot Callsign (Registered on Start Splash Screen)
     this.playerCallsign = (localStorage.getItem('deadsun_callsign') || 'PILOT').toUpperCase().slice(0, 8);
+
+    // Difficulty — persisted across sessions
+    const savedDiff = localStorage.getItem('deadsun_difficulty') || 'MEDIUM';
+    this.difficulty = DIFFICULTY_PROFILES[savedDiff] ? savedDiff : 'MEDIUM';
 
     // Mobile Joystick Customization Settings
     this.joystickSettings = this.loadJoystickSettings();
@@ -1197,6 +1239,9 @@ class DeadSunGame {
     this.dom.btnRedeploy.addEventListener('click', () => this.restartGame());
     this.dom.btnMainMenu.addEventListener('click', () => this.returnToMenu());
 
+    // ── Difficulty Button Wiring ──────────────────────────────────────────
+    this._setupDifficultyButtons();
+
     this.dom.transmissionLayer.addEventListener('click', () => this.advanceDialogue());
     this.dom.tutorialCard.addEventListener('click', () => this.closeTutorial());
 
@@ -1443,9 +1488,62 @@ class DeadSunGame {
   }
 
   /* =======================================================
+     DIFFICULTY SYSTEM
+     ======================================================= */
+  _setupDifficultyButtons() {
+    // Refresh UI to match saved difficulty
+    this._syncDifficultyUI();
+
+    // Splash buttons
+    const splashBtns = [this.dom.splashDiffEasy, this.dom.splashDiffMedium, this.dom.splashDiffHardcore];
+    splashBtns.forEach(btn => {
+      if (!btn) return;
+      btn.addEventListener('click', () => {
+        this._setDifficulty(btn.dataset.diff);
+      });
+    });
+
+    // Pause menu buttons
+    const pauseBtns = [this.dom.pauseDiffEasy, this.dom.pauseDiffMedium, this.dom.pauseDiffHardcore];
+    pauseBtns.forEach(btn => {
+      if (!btn) return;
+      btn.addEventListener('click', () => {
+        this._setDifficulty(btn.dataset.diff);
+        if (window.soundEngine) window.soundEngine.playUIClick?.();
+      });
+    });
+  }
+
+  _setDifficulty(diffKey) {
+    if (!DIFFICULTY_PROFILES[diffKey]) return;
+    this.difficulty = diffKey;
+    localStorage.setItem('deadsun_difficulty', diffKey);
+    this._syncDifficultyUI();
+  }
+
+  _syncDifficultyUI() {
+    const d = this.difficulty;
+
+    // Pause buttons — toggle .diff-active class
+    const pauseMap = { EASY: this.dom.pauseDiffEasy, MEDIUM: this.dom.pauseDiffMedium, HARDCORE: this.dom.pauseDiffHardcore };
+    Object.entries(pauseMap).forEach(([key, btn]) => {
+      if (!btn) return;
+      btn.classList.toggle('diff-active', key === d);
+    });
+
+    // Splash buttons — toggle .sdiff-selected class
+    const splashMap = { EASY: this.dom.splashDiffEasy, MEDIUM: this.dom.splashDiffMedium, HARDCORE: this.dom.splashDiffHardcore };
+    Object.entries(splashMap).forEach(([key, btn]) => {
+      if (!btn) return;
+      btn.classList.toggle('sdiff-selected', key === d);
+    });
+  }
+
+  /* =======================================================
      MOBILE JOYSTICK & CONTROLS CUSTOMIZATION ENGINE
      ======================================================= */
   loadJoystickSettings() {
+
     const defaults = {
       size: 100,
       side: 'left',
@@ -1738,8 +1836,9 @@ class DeadSunGame {
     this.visitedShelterIds.clear();
     this.visitedShelterIds.add(1);
 
-    // Reset Solar Flare
-    this.solarFlareTimer = 26.0;
+    // Reset Solar Flare — timer depends on difficulty
+    const _dp = DIFFICULTY_PROFILES[this.difficulty] || DIFFICULTY_PROFILES.MEDIUM;
+    this.solarFlareTimer = _dp.flareTimer;
     this.solarFlarePhase = 'IDLE';
     this.solarFlareDuration = 0;
     this.solarFlareIntensity = 0;
@@ -1748,8 +1847,12 @@ class DeadSunGame {
     if (this.dom.solarFlareOverlay) this.dom.solarFlareOverlay.classList.add('hidden');
 
     this.fire.x = -450;
-    this.fire.baseSpeed = 95;
-    this.fire.speed = 95;
+    // Apply difficulty profile to fire speed
+    const diffProfile = DIFFICULTY_PROFILES[this.difficulty] || DIFFICULTY_PROFILES.MEDIUM;
+    this.fire.baseSpeed = diffProfile.fireBaseSpeed;
+    this.fire.speed = diffProfile.fireBaseSpeed;
+    // Store active profile on instance for use in update loop
+    this._diff = diffProfile;
 
     this.camera.x = 0;
     this.camera.y = 0;
@@ -2085,7 +2188,7 @@ class DeadSunGame {
   spawnNextObstacle() {
     // 7 Tactical Formations — Full vertical range PLAY_MIN_Y(175) to PLAY_MAX_Y(545)
     // Extreme Top: Y 148-168 | Extreme Bottom: Y 455-480 (solidH@0.48 keeps bottom edge ≤545)
-    // Increased horizontal spacing to avoid straight-line feel; corridors tightened for difficulty
+    // Difficulty-aware: spacing offset and lava frequency from this._diff
     const patternList = [0, 1, 2, 3, 4, 5, 6];
     let pattern;
     do {
@@ -2094,6 +2197,11 @@ class DeadSunGame {
     this.lastPattern = pattern;
 
     const baseX = this.nextSpawnX;
+    // Difficulty spacing: positive = more gap (EASY), negative = tighter (HARDCORE)
+    const spacing = (this._diff ? this._diff.obstacleSpacing : 0);
+    // Lava frequency gate: returns true if this lava pool should spawn
+    const lavaFreq = (this._diff ? this._diff.lavaFrequency : 1.0);
+    const lavaCheck = () => Math.random() < lavaFreq;
 
     switch (pattern) {
       case 0: {
@@ -2110,10 +2218,10 @@ class DeadSunGame {
         this.spawnShelterOfType(botType, botX, botY);
 
         // Lava pool mid-left to close the easy path
-        this.spawnLavaPool(baseX + 80 + Math.random() * 40, 290 + Math.random() * 30);
+        if (lavaCheck()) this.spawnLavaPool(baseX + 80 + Math.random() * 40, 290 + Math.random() * 30);
 
         const maxW = Math.max((ASSET_SPECS[topType].w || 300) * 0.48, (ASSET_SPECS[botType].w || 250) * 0.48);
-        this.nextSpawnX = Math.max(botX, baseX) + maxW + 150 + Math.random() * 60;
+        this.nextSpawnX = Math.max(botX, baseX) + maxW + 150 + Math.random() * 60 + spacing;
         break;
       }
 
@@ -2121,10 +2229,10 @@ class DeadSunGame {
         // --- FORMATION 1: EXTREME-BOTTOM ANCHOR + TOP LAVA ---
         // Forces player to find a safe mid-corridor while both extremes are blocked
         const lavaY = PLAY_MIN_Y + 5 + Math.random() * 15; // 180–195
-        this.spawnLavaPool(baseX + 30, lavaY);
+        if (lavaCheck()) this.spawnLavaPool(baseX + 30, lavaY);
 
         // Second lava at extreme bottom
-        this.spawnLavaPool(baseX + 55 + Math.random() * 30, 490 + Math.random() * 10);
+        if (lavaCheck()) this.spawnLavaPool(baseX + 55 + Math.random() * 30, 490 + Math.random() * 10);
 
         const midType = [2, 4, 5, 6][Math.floor(Math.random() * 4)];
         const midX = baseX + 120 + Math.random() * 40;
@@ -2137,7 +2245,7 @@ class DeadSunGame {
         const botY = 462 + Math.random() * 15; // 462–477
         this.spawnShelterOfType(botType, botX, botY);
 
-        this.nextSpawnX = botX + (ASSET_SPECS[botType].w * 0.48) + 140 + Math.random() * 50;
+        this.nextSpawnX = botX + (ASSET_SPECS[botType].w * 0.48) + 140 + Math.random() * 50 + spacing;
         break;
       }
 
@@ -2153,9 +2261,9 @@ class DeadSunGame {
         this.spawnShelterOfType(midType, midX, midY);
 
         // True extreme-bottom lava pool
-        this.spawnLavaPool(midX + 25 + Math.random() * 30, 492 + Math.random() * 10);
+        if (lavaCheck()) this.spawnLavaPool(midX + 25 + Math.random() * 30, 492 + Math.random() * 10);
 
-        this.nextSpawnX = midX + (ASSET_SPECS[midType].w * 0.48) + 140 + Math.random() * 50;
+        this.nextSpawnX = midX + (ASSET_SPECS[midType].w * 0.48) + 140 + Math.random() * 50 + spacing;
         break;
       }
 
@@ -2174,9 +2282,9 @@ class DeadSunGame {
 
         // Opposite extreme lava pool
         const oppLavaY = isTopSentinel ? (492 + Math.random() * 10) : (180 + Math.random() * 15);
-        this.spawnLavaPool(centerX + 35 + Math.random() * 25, oppLavaY);
+        if (lavaCheck()) this.spawnLavaPool(centerX + 35 + Math.random() * 25, oppLavaY);
 
-        this.nextSpawnX = centerX + (ASSET_SPECS[centerType].w * 0.48) + 140 + Math.random() * 50;
+        this.nextSpawnX = centerX + (ASSET_SPECS[centerType].w * 0.48) + 140 + Math.random() * 50 + spacing;
         break;
       }
 
@@ -2196,7 +2304,7 @@ class DeadSunGame {
           // Wider horizontal gaps so they don't feel like a straight line
           currX += (ASSET_SPECS[sType].w * 0.48) * 0.65 + 90 + Math.random() * 35;
         }
-        this.nextSpawnX = currX + 80 + Math.random() * 45;
+        this.nextSpawnX = currX + 80 + Math.random() * 45 + spacing;
         break;
       }
 
@@ -2213,10 +2321,10 @@ class DeadSunGame {
         this.spawnShelterOfType(s2Type, s2X, s2Y);
 
         // Close the mid-zone with a lava pool
-        this.spawnLavaPool(baseX + 50 + Math.random() * 30, 300 + Math.random() * 40);
+        if (lavaCheck()) this.spawnLavaPool(baseX + 50 + Math.random() * 30, 300 + Math.random() * 40);
 
         const maxW = Math.max((ASSET_SPECS[s1Type].w || 300) * 0.48, (ASSET_SPECS[s2Type].w || 250) * 0.48);
-        this.nextSpawnX = s2X + maxW + 150 + Math.random() * 55;
+        this.nextSpawnX = s2X + maxW + 150 + Math.random() * 55 + spacing;
         break;
       }
 
@@ -2238,14 +2346,14 @@ class DeadSunGame {
         this.spawnShelterOfType(botType, botX, botY);
 
         // Lava pool between mid and bot to seal the bottom escape
-        this.spawnLavaPool(midX + 30, 490 + Math.random() * 8);
+        if (lavaCheck()) this.spawnLavaPool(midX + 30, 490 + Math.random() * 8);
 
         const maxW = Math.max(
           (ASSET_SPECS[topType].w || 300) * 0.48,
           (ASSET_SPECS[midType].w || 250) * 0.48,
           (ASSET_SPECS[botType].w || 200) * 0.48
         );
-        this.nextSpawnX = botX + maxW + 160 + Math.random() * 60;
+        this.nextSpawnX = botX + maxW + 160 + Math.random() * 60 + spacing;
         break;
       }
     }
@@ -2608,10 +2716,12 @@ class DeadSunGame {
       if (this.player.inShade) {
         this.player.shelterTime += dt;
         const coolMult = Math.min(3.0, Math.pow(this.player.shelterTime, SHADE_COOL_EXP)) * (this.player.hasBoots ? 1.6 : 1.0);
-        this.heat = Math.max(0, this.heat - SHADE_COOL_BASE * coolMult * dt);
+        const _coolBase = (this._diff ? this._diff.shadeCoolBase : SHADE_COOL_BASE);
+        this.heat = Math.max(0, this.heat - _coolBase * coolMult * dt);
         this.player.stamina = Math.min(MAX_STAMINA, this.player.stamina + STAMINA_REGEN_RATE * dt);
       } else {
-        this.heat = Math.min(1.0, this.heat + SUN_HEAT_RATE * dt);
+        const _heatRate = (this._diff ? this._diff.heatRate : SUN_HEAT_RATE);
+        this.heat = Math.min(1.0, this.heat + _heatRate * dt);
 
         // Heat quip timer when baking in open sun
         this.heatQuipTimer -= dt;
