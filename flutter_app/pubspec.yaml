@@ -63,7 +63,28 @@ flutter:
 
   assets:
     - assets/logo.jpg
-    - assets/web/
+    - assets/web/index.html
+    - assets/web/style.css
+    - assets/web/responsive.css
+    - assets/web/runtime-config.js
+    - assets/web/game.js
+    - assets/web/audio.js
+    - assets/web/pixi.min.js
+    - assets/web/music.mp3
+    - assets/web/asset1.png
+    - assets/web/asset2.png
+    - assets/web/asset3.png
+    - assets/web/asset4.png
+    - assets/web/asset5.png
+    - assets/web/asset6.png
+    - assets/web/asset7.png
+    - assets/web/sun.png
+    - assets/web/sun_glow.png
+    - assets/web/background_scene_for_sun.png
+    - assets/web/giant_approaching1.png
+    - assets/web/astronaut.png
+    - assets/web/logo_red_sun.jpg
+    - assets/web/dialogue_astronaut.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

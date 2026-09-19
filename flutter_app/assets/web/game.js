@@ -31,8 +31,8 @@ const DIFFICULTY_PROFILES = {
     heatRate: 0.13,            // slower overheating
     shadeCoolBase: 0.42,       // faster cooling in shade
     obstacleSpacing: 80,       // extra px between formations
-    flareTimer: 9999,          // no solar flares
-    lavaFrequency: 0.5,        // 50% fewer lava pools in formations
+    flareTimer: Infinity,          // no solar flares
+    lavaFrequency: 0.35,        // 50% fewer lava pools in formations
     label: 'EASY'
   },
   MEDIUM: {
@@ -41,7 +41,7 @@ const DIFFICULTY_PROFILES = {
     shadeCoolBase: 0.34,
     obstacleSpacing: 0,
     flareTimer: 26.0,
-    lavaFrequency: 1.0,
+    lavaFrequency: 0.65,
     label: 'MEDIUM'
   },
   HARDCORE: {
@@ -50,7 +50,7 @@ const DIFFICULTY_PROFILES = {
     shadeCoolBase: 0.26,       // slower cooling
     obstacleSpacing: -40,      // tighter gaps between formations
     flareTimer: 14.0,          // solar flares start sooner
-    lavaFrequency: 1.4,        // 40% more lava pool spawns
+    lavaFrequency: 0.9,        // 40% more lava pool spawns
     label: 'HARDCORE'
   }
 };
@@ -388,14 +388,34 @@ class DeadSunGame {
       width: V_WIDTH,
       height: V_HEIGHT,
       backgroundColor: 0x120c18,
-      resolution: window.devicePixelRatio || 1,
+      resolution: Math.min(window.devicePixelRatio || 1, 1.5),
+      powerPreference: 'high-performance',
       autoDensity: true,
       antialias: true
     });
 
     this.dom.container.appendChild(this.app.view);
     this.handleResize();
-    window.addEventListener('resize', () => this.handleResize());
+    const resize = () => {
+      cancelAnimationFrame(this.resizeFrame);
+      this.resizeFrame = requestAnimationFrame(() => this.handleResize());
+    };
+    window.addEventListener('resize', resize);
+    window.visualViewport?.addEventListener('resize', resize);
+    const releaseInput = () => {
+      this.keys = {};
+      this.resetJoystick();
+      this.dom.touchBtnDash?.classList.remove('active');
+      this.lastTime = performance.now();
+    };
+    window.addEventListener('blur', releaseInput);
+    document.addEventListener('visibilitychange', () => {
+      releaseInput();
+      if (document.hidden) {
+        if (this.state === 'PLAYING' && !this.paused) this.togglePause();
+        this.app.ticker.stop();
+      } else this.app.ticker.start();
+    });
 
     // 2. Setup Container Layers
     this.skyLayer = new PIXI.Container();
@@ -433,29 +453,34 @@ class DeadSunGame {
 
     // 7. Setup Input & Event Handlers
     this.setupInputHandlers();
+    this.dom.btnStart.disabled = false;
+    this.dom.btnStart.textContent = "BEGIN RUN";
 
     // 8. Start Game Loop
     this.lastTime = performance.now();
+    this.app.ticker.maxFPS = 60;
     this.app.ticker.add(() => this.update());
   }
 
   handleResize() {
-    const windowW = window.innerWidth || document.documentElement.clientWidth || 1280;
-    const windowH = window.innerHeight || document.documentElement.clientHeight || 720;
+    const windowW = Math.round(window.visualViewport?.width || window.innerWidth || 1280);
+    const windowH = Math.round(window.visualViewport?.height || window.innerHeight || 720);
     const aspect = windowW / windowH;
-
-    // Expand virtual width to match screen aspect ratio, eliminating all black bars!
     this.vHeight = 720;
-    this.vWidth = Math.round(this.vHeight * Math.max(16 / 9, aspect));
-
-    // Scale to fit window height exactly (100% full screen coverage)
-    const scale = windowH / this.vHeight;
-
+    this.vWidth = Math.max(240, Math.round(this.vHeight * aspect));
+    this.viewportScale = windowH / 720;
+    this.viewportWidth = windowW;
+    this.camera.zoom = aspect < 1 ? 0.62 : (aspect < 1.5 ? 0.95 : 1.18);
     if (this.dom.container) {
-      this.dom.container.style.width = `${this.vWidth}px`;
-      this.dom.container.style.height = `${this.vHeight}px`;
-      this.dom.container.style.transform = `scale(${scale})`;
+      this.dom.container.style.width = `${windowW}px`;
+      this.dom.container.style.height = `${windowH}px`;
+      this.dom.container.style.transform = 'none';
     }
+    document.documentElement.style.setProperty('--viewport-height', `${windowH}px`);
+    const cap = this.quality === 'LOW' ? 1 : 1.5;
+    const budget = Math.sqrt(1800000 / (this.vWidth * this.vHeight));
+    if (this.app?.renderer) this.app.renderer.resolution = Math.max(0.7, Math.min(devicePixelRatio || 1, cap, budget));
+    if (this.joystickSettings) this.applyJoystickSettings();
 
     if (this.app && this.app.renderer) {
       this.app.renderer.resize(this.vWidth, this.vHeight);
@@ -741,6 +766,9 @@ class DeadSunGame {
     // This guarantees the game renders 100% reliably even on slow network / Render / offline!
     this.generateProceduralShelterTextures();
     this.textures.astronautVector = this.createVectorAstronautTexture();
+    const dot = new PIXI.Graphics(); dot.beginFill(0xffffff); dot.drawCircle(6,6,6); dot.endFill();
+    this.particleTexture = this.app.renderer.generateTexture(dot); dot.destroy();
+    this.particlePool = [];
 
     const assetFiles = [
       { name: 'sun', url: 'sun.png' },
@@ -1091,6 +1119,8 @@ class DeadSunGame {
 
   setupInputHandlers() {
     window.addEventListener('keydown', (e) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
       this.keys[e.code] = true;
 
       // Start Audio on first interaction
@@ -1220,6 +1250,7 @@ class DeadSunGame {
     this.dom.btnToggleQuality.addEventListener('click', () => {
       this.quality = this.quality === 'HIGH' ? 'LOW' : 'HIGH';
       this.dom.btnToggleQuality.innerText = `QUALITY: ${this.quality}`;
+      this.handleResize();
     });
 
     if (this.dom.btnToggleTouch) {
@@ -1264,7 +1295,7 @@ class DeadSunGame {
     }
     if (this.dom.btnClearDatabase) {
       this.dom.btnClearDatabase.addEventListener('click', async () => {
-        if (confirm("Wipe all cloud and local leaderboard database records?")) {
+        if (confirm("Clear saved scores on this device?")) {
           await this.clearAllDatabaseAndLocalScores();
         }
       });
@@ -1414,6 +1445,10 @@ class DeadSunGame {
     const dy = clientY - this.touchJoystick.startY;
     const dist = Math.hypot(dx, dy);
     const maxR = this.touchJoystick.maxRadius;
+    if (dist < maxR * 0.10) {
+      this.touchJoystick.x = this.touchJoystick.y = 0;
+      return;
+    }
 
     let clampedX = dx;
     let clampedY = dy;
@@ -1612,15 +1647,16 @@ class DeadSunGame {
 
     if (!jZone || !jBase || !jThumb || !aZone || !dashBtn) return;
 
-    const joyScale = s.size / 100;
+    const deviceScale = Math.min(1, (window.innerHeight || 720) / 520, (window.innerWidth || 1280) / 480);
+    const joyScale = s.size / 100 * Math.max(0.65, deviceScale);
     const baseDim = Math.round(130 * joyScale);
     const thumbDim = Math.round(52 * joyScale);
-    const jZoneDim = Math.max(baseDim + 20, 150);
+    const jZoneDim = baseDim + 20;
     this.touchJoystick.maxRadius = Math.round(46 * joyScale);
 
-    const dashScale = s.dashSize / 100;
+    const dashScale = s.dashSize / 100 * Math.max(0.7, deviceScale);
     const dashDim = Math.round(96 * dashScale);
-    const aZoneDim = Math.max(dashDim + 20, 150);
+    const aZoneDim = dashDim + 20;
 
     // Size updates
     jZone.style.width = `${jZoneDim}px`;
@@ -1638,7 +1674,7 @@ class DeadSunGame {
     const icon = dashBtn.querySelector('.touch-dash-icon');
     const label = dashBtn.querySelector('.touch-dash-label');
     if (icon) icon.style.fontSize = `${Math.round(26 * dashScale)}px`;
-    if (label) label.style.fontSize = `${Math.round(11 * dashScale)}px`;
+    if (label) label.style.fontSize = `${Math.max(12, Math.round(14 * dashScale))}px`;
 
     // Position updates
     if (s.side === 'right') {
@@ -2567,7 +2603,16 @@ class DeadSunGame {
      ======================================================= */
   update() {
     const now = performance.now();
-    const dt = Math.min(0.05, (now - this.lastTime) / 1000);
+    const rawDt = (now - this.lastTime) / 1000;
+    const dt = Math.min(0.1, rawDt);
+    this.frameAverage = (this.frameAverage || 16.7) * 0.96 + Math.min(rawDt * 1000, 100) * 0.04;
+    if (this.state === 'PLAYING' && !this.paused) {
+      this.slowFrameTime = this.frameAverage > 27 ? (this.slowFrameTime || 0) + dt : 0;
+      if (this.slowFrameTime > 4 && this.quality === 'HIGH') {
+        this.quality = 'LOW'; this.slowFrameTime = 0;
+        this.dom.btnToggleQuality.innerText = 'QUALITY: LOW (AUTO)'; this.handleResize();
+      }
+    }
     this.lastTime = now;
 
     if (this.paused || this.state === 'SPLASH' || this.state === 'GAMEOVER') return;
@@ -2726,7 +2771,7 @@ class DeadSunGame {
       for (const sup of this.supplies) {
         if (!sup.collected && Math.hypot(this.player.x - sup.x, this.player.y - sup.y) < sup.radius) {
           sup.collected = true;
-          sup.container.destroy();
+          sup.container.visible = false;
           this.player.hasBoots = true;
           this.player.buffTimer = 16.0;
           if (window.soundEngine) window.soundEngine.playShelterChime();
@@ -2840,7 +2885,7 @@ class DeadSunGame {
       for (let i = this.supplies.length - 1; i >= 0; i--) {
         const sup = this.supplies[i];
         if (sup.x + sup.radius < cullX) {
-          sup.container.destroy();
+          sup.container.visible = false;
           this.supplies.splice(i, 1);
         }
       }
@@ -2850,7 +2895,11 @@ class DeadSunGame {
       this.updateParticles(dt);
 
       // 10. Entity Y-sorting
-      this.entityLayer.children.sort((a, b) => a.position.y - b.position.y);
+      this.sortTimer = (this.sortTimer || 0) + dt;
+      if (this.sortTimer >= 0.1) {
+        this.entityLayer.children.sort((a, b) => a.position.y - b.position.y);
+        this.sortTimer = 0;
+      }
 
       // 11. Audio Engine
       if (window.soundEngine) {
@@ -2858,7 +2907,8 @@ class DeadSunGame {
       }
 
       // 12. HUD
-      this.updateHud();
+      this.hudTimer = (this.hudTimer || 0) + dt;
+      if (this.hudTimer >= 0.1) { this.updateHud(); this.hudTimer = 0; }
 
       // 13. Real-time Head Message tracking (Always anchored directly on robot's head)
       if (this.activeHeadMessage) {
@@ -2955,7 +3005,7 @@ class DeadSunGame {
         this.solarFlareIntensity = 1.0;
         // Heat multiplier during solar flare while exposed to direct sunlight
         if (!this.player.inShade) {
-          this.heat = Math.min(1.0, this.heat + SUN_HEAT_RATE * 0.85 * dt);
+          this.heat = Math.min(1.0, this.heat + (this._diff?.heatRate || SUN_HEAT_RATE) * 0.85 * dt);
         }
         if (this.solarFlareDuration <= 0) {
           this.solarFlarePhase = 'COOLDOWN';
@@ -2975,7 +3025,7 @@ class DeadSunGame {
     }
 
     // 2. Horizontal Movement (Parallax with Camera + Ambient Drift)
-    const targetX = (V_WIDTH / 2) - ((this.camera.x * 0.035) % (V_WIDTH * 0.4)) + Math.sin(time * 0.25) * 16;
+    const targetX = (this.vWidth / 2) - ((this.camera.x * 0.035) % (this.vWidth * 0.4)) + Math.sin(time * 0.25) * 16;
     this.sunContainer.x += (targetX - this.sunContainer.x) * dt * 3;
 
     // 3. Vertical Descent (Getting closer to the player and horizon as distance/time increases)
@@ -3004,6 +3054,10 @@ class DeadSunGame {
 
   updateFirestorm(dt) {
     if (!this.fireZigzagGfx || !this.fireBodyGfx) return;
+    this.fireDrawAccumulator = (this.fireDrawAccumulator || 0) + dt;
+    if (this.fireDrawAccumulator < 1 / (this.quality === "LOW" ? 24 : 40)) return;
+    dt = this.fireDrawAccumulator;
+    this.fireDrawAccumulator = 0;
     const time = this.elapsedTime;
 
     this.fireZigzagGfx.clear();
@@ -3077,7 +3131,7 @@ class DeadSunGame {
 
   updateCamera(dt) {
     const vW = this.vWidth || V_WIDTH;
-    const targetCamX = this.player.x - vW * 0.32;
+    const targetCamX = this.player.x - vW * 0.32 / this.camera.zoom;
     this.camera.x += (targetCamX - this.camera.x) * Math.min(1, dt * 6);
 
     // Dynamic Vertical Camera Tracking (Follows player smoothly with soft boundary damping)
@@ -3088,7 +3142,7 @@ class DeadSunGame {
     if (this.camera.shakeIntensity > 0.1) {
       this.camera.shakeOffset.x = (Math.random() * 2 - 1) * this.camera.shakeIntensity;
       this.camera.shakeOffset.y = (Math.random() * 2 - 1) * this.camera.shakeIntensity;
-      this.camera.shakeIntensity *= this.camera.shakeDecay;
+      this.camera.shakeIntensity *= Math.pow(this.camera.shakeDecay, dt * 60);
     } else {
       this.camera.shakeOffset.x = 0;
       this.camera.shakeOffset.y = 0;
@@ -3129,22 +3183,18 @@ class DeadSunGame {
     }
 
     if (this.player.vx !== 0 || this.player.vy !== 0) {
-      if (Math.random() < (this.quality === 'HIGH' ? 0.35 : 0.15)) {
-        const dust = new PIXI.Graphics();
-        dust.beginFill(0x9a5a6e, 0.4);
-        dust.drawCircle(0, 0, 3 + Math.random() * 3);
-        dust.endFill();
+      if (this.particles.length < 70 && Math.random() < Math.min(1, dt * (this.quality === 'HIGH' ? 21 : 9))) {
+        const dust = this.particlePool.pop() || new PIXI.Sprite(this.particleTexture);
+        dust.visible = true; dust.anchor.set(0.5); dust.tint = 0x9a5a6e; dust.scale.set(0.5 + Math.random()*0.4);
         dust.position.set(this.player.x + (Math.random() * 8 - 4), this.player.y + PLAYER_FEET_OFFSET);
         this.particleLayer.addChild(dust);
         this.particles.push({ gfx: dust, vx: -this.player.vx * 0.1, vy: -10, alpha: 0.5, life: 0.35 });
       }
     }
 
-    if (this.quality === 'HIGH' && Math.random() < 0.6) {
-      const ember = new PIXI.Graphics();
-      ember.beginFill(0xffb24a, 0.85);
-      ember.drawCircle(0, 0, 2 + Math.random() * 2.5);
-      ember.endFill();
+    if (this.quality === 'HIGH' && this.particles.length < 70 && Math.random() < Math.min(1, dt * 30)) {
+      const ember = this.particlePool.pop() || new PIXI.Sprite(this.particleTexture);
+      ember.visible = true; ember.anchor.set(0.5); ember.tint = 0xffb24a; ember.scale.set(0.3 + Math.random()*0.3);
       ember.position.set(this.fire.x + Math.random() * 60, Math.random() * V_HEIGHT);
       this.particleLayer.addChild(ember);
       this.particles.push({ gfx: ember, vx: 50 + Math.random() * 90, vy: (Math.random() * 2 - 1) * 30, alpha: 0.9, life: 0.6 });
@@ -3158,7 +3208,8 @@ class DeadSunGame {
       p.alpha = Math.max(0, p.life / 0.5);
       p.gfx.alpha = p.alpha;
       if (p.life <= 0) {
-        p.gfx.destroy();
+        p.gfx.visible = false; p.gfx.parent?.removeChild(p.gfx);
+        if (this.particlePool.length < 80) this.particlePool.push(p.gfx); else p.gfx.destroy();
         this.particles.splice(i, 1);
       }
     }
@@ -3220,10 +3271,10 @@ class DeadSunGame {
     if (!this.activeHeadMessage || !this.dom.headMessageBubble) return;
 
     const zoom = this.camera.zoom || 1.28;
-    const screenX = (this.player.x - this.camera.x) * zoom;
-    const screenY = this.worldLayer.position.y + (this.player.y - 58) * zoom;
+    const screenX = (this.player.x - this.camera.x) * zoom * this.viewportScale;
+    const screenY = (this.worldLayer.position.y + (this.player.y - 58) * zoom) * this.viewportScale;
 
-    const vW = this.vWidth || 1280;
+    const vW = this.viewportWidth || 1280;
     const clampedX = Math.max(160, Math.min(vW - 160, screenX));
     const clampedY = Math.max(70, screenY);
 
@@ -3813,6 +3864,14 @@ class DeadSunGame {
   /* =======================================================
      SECTOR LEADERBOARD & TRANSMISSION CLIENT
      ======================================================= */
+  apiUrl(route) {
+    const base = window.DEAD_SUN_API_URL || '';
+    if (base) {
+      try { const url = new URL(base); if (url.protocol === 'https:') return url.origin + route; } catch (_) {}
+    }
+    return route;
+  }
+
   async submitScore() {
     if (this.scoreSubmitted) return;
 
@@ -3828,7 +3887,8 @@ class DeadSunGame {
       distance: this.distance,
       time: parseFloat(this.elapsedTime.toFixed(1)),
       shelters: this.sheltersFound,
-      seed: this.seed
+      seed: this.seed,
+      difficulty: this.difficulty || 'MEDIUM'
     };
 
     // Save locally for resilient offline play
@@ -3843,10 +3903,7 @@ class DeadSunGame {
     }
 
     // Try submitting to dedicated backend server
-    const endpoints = [
-      '/api/score',
-      'http://localhost:3000/api/score'
-    ];
+    const endpoints = [this.apiUrl('/api/score')];
 
     let submitted = false;
     for (const url of endpoints) {
@@ -3854,7 +3911,8 @@ class DeadSunGame {
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(7000)
         });
         if (res.ok) {
           const data = await res.json();
@@ -3892,15 +3950,12 @@ class DeadSunGame {
     }
 
     const currentCallsign = this.playerCallsign || localStorage.getItem('deadsun_callsign') || 'PILOT';
-    const endpoints = [
-      '/api/leaderboard',
-      'http://localhost:3000/api/leaderboard'
-    ];
+    const endpoints = [this.apiUrl('/api/leaderboard?difficulty=' + encodeURIComponent(this.difficulty || 'MEDIUM'))];
 
     let records = null;
     for (const url of endpoints) {
       try {
-        const res = await fetch(url);
+        const res = await fetch(url, {signal: AbortSignal.timeout(7000)});
         if (res.ok) {
           const data = await res.json();
           if (data.status === 'ok' && Array.isArray(data.leaderboard)) {
@@ -3935,16 +3990,16 @@ class DeadSunGame {
 
     let html = '';
     records.slice(0, 30).forEach((entry, idx) => {
-      const rank = entry.rank || (idx + 1);
+      const rank = Number.isInteger(entry.rank) && entry.rank > 0 ? entry.rank : idx + 1;
       const isCurrent = (entry.callsign === highlightCallsign && entry.distance === highlightDist);
       const rowClass = isCurrent ? 'current-pilot' : '';
       html += `
         <tr class="${rowClass}">
           <td class="rank-col">#${rank}</td>
           <td><strong>${this.escapeHtml(entry.callsign || 'UNKNOWN')}</strong></td>
-          <td>${entry.distance} m</td>
-          <td>${entry.time ? entry.time.toFixed(1) : '0.0'} s</td>
-          <td>${entry.shelters || 0}</td>
+          <td>${Number.isFinite(Number(entry.distance)) ? Math.max(0, Number(entry.distance)) : 0} m</td>
+          <td>${Number.isFinite(Number(entry.time)) ? Number(entry.time).toFixed(1) : '0.0'} s</td>
+          <td>${Number.isFinite(Number(entry.shelters)) ? Math.max(0, Number(entry.shelters)) : 0}</td>
         </tr>
       `;
     });
@@ -3957,7 +4012,7 @@ class DeadSunGame {
       const stored = JSON.parse(localStorage.getItem('deadsun_local_scores') || '[]');
       if (Array.isArray(stored) && stored.length > 0) {
         stored.sort((a, b) => b.distance !== a.distance ? b.distance - a.distance : a.time - b.time);
-        return stored.map((entry, idx) => ({ ...entry, rank: idx + 1 }));
+        return stored.filter(e => (e.difficulty || 'MEDIUM') === (this.difficulty || 'MEDIUM')).map((entry, idx) => ({ ...entry, rank: idx + 1 }));
       }
     } catch (e) {}
     return [];
@@ -3979,19 +4034,8 @@ class DeadSunGame {
       this.bests = { dist: 0, time: 0, shelters: 0 };
     } catch (e) {}
 
-    const endpoints = [
-      '/api/admin/clear-database',
-      'http://localhost:3000/api/admin/clear-database'
-    ];
-
-    for (const ep of endpoints) {
-      try {
-        await fetch(ep, { method: 'POST' });
-      } catch (e) {}
-    }
-
     if (this.dom.leaderboardRows) {
-      this.dom.leaderboardRows.innerHTML = '<tr><td colspan="5" class="leaderboard-empty">DATABASE CLEARED &bull; ZERO ACTIVE RUNS</td></tr>';
+      this.dom.leaderboardRows.innerHTML = '<tr><td colspan="5" class="leaderboard-empty">LOCAL RECORDS CLEARED</td></tr>';
     }
   }
 

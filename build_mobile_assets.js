@@ -20,6 +20,8 @@ for (const target of TARGET_DIRS) {
 const CORE_FILES = [
   'index.html',
   'style.css',
+  'responsive.css',
+  'runtime-config.js',
   'game.js',
   'audio.js',
   'pixi.min.js',
@@ -39,7 +41,8 @@ for (const file of CORE_FILES) {
 }
 
 // Copy All Image Assets (*.png, *.jpg)
-const rootFiles = fs.readdirSync(ROOT_DIR);
+const rootFiles = ['asset1.png','asset2.png','asset3.png','asset4.png','asset5.png','asset6.png','asset7.png',
+  'sun.png','sun_glow.png','background_scene_for_sun.png','giant_approaching1.png','astronaut.png','logo_red_sun.jpg','dialogue_astronaut.png'];
 let assetCount = 0;
 for (const file of rootFiles) {
   const lower = file.toLowerCase();
@@ -55,4 +58,3 @@ for (const file of rootFiles) {
 }
 console.log(`[PACK] Copied ${assetCount} game assets to targets!`);
 console.log(`[READY] Assets successfully synced to www/ and flutter_app/assets/web/!`);
-

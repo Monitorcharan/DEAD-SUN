@@ -789,7 +789,7 @@ class SoundEngine {
       }
     }
     if (this.roarGain) {
-      const targetGain = this.sfxMuted ? 0 : this.roarGain * 0.65;
+      const targetGain = this.sfxMuted ? 0 : this.roarTarget * 0.65;
       if (Number.isFinite(targetGain)) {
         this.roarGain.gain.setTargetAtTime(targetGain, now, 0.1);
       }

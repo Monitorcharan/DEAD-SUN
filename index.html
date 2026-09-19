@@ -2,16 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#120c18">
   <title>DEAD SUN - Shelter from the Red Giant</title>
-  <!-- Google Fonts: Orbitron, Rajdhani & Share Tech Mono (Non-blocking for instant offline launch) -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800;900&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="responsive.css">
   <!-- PixiJS v7 Local Offline Bundle -->
   <script src="pixi.min.js"></script>
 </head>
@@ -289,7 +286,7 @@
         </div>
 
         <div class="splash-buttons">
-          <button class="action-btn" id="btn-start">CLICK TO BEGIN</button>
+          <button class="action-btn" id="btn-start" disabled>LOADING GAME</button>
           <button class="action-secondary-btn" id="btn-splash-leaderboard">&#9733; LEADERBOARD</button>
           <button class="action-secondary-btn" id="btn-splash-controls">&#9881; CONTROLS</button>
           <a class="action-secondary-btn apk-download-btn" id="btn-download-apk" href="/download/apk" download="THE_RED_SUN.apk">&#128241; ANDROID APK</a>
@@ -380,6 +377,7 @@
     </div>
   </div>
 
+  <script src="runtime-config.js"></script>
   <script src="audio.js"></script>
   <script src="game.js"></script>
 </body>

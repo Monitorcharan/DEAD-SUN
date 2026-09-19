@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-package-lock.json
 
 # Build outputs
 /www/
@@ -35,3 +34,7 @@ sun_crop_*.png
 Thumbs.db
 .vscode/
 .idea/
+
+.npm-cache/
+qa/
+__pycache__/

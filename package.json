@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@capacitor/android": "^6.1.2",
-    "@capacitor/cli": "^6.1.2",
     "@capacitor/core": "^6.1.2",
     "pg": "^8.23.0"
   },
@@ -26,5 +25,11 @@
     "apk"
   ],
   "author": "Antigravity Pair Programmer",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2"
+  },
+  "overrides": {
+    "tar": "7.5.22"
+  }
 }

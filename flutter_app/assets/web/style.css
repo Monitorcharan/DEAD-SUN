@@ -32,7 +32,7 @@ html, body {
   height: 100%;
   overflow: hidden;
   background-color: #050408;
-  font-family: 'Orbitron', monospace, sans-serif;
+  font-family: 'Segoe UI', Roboto, Arial, sans-serif;
   color: var(--c-text-main);
   display: flex;
   align-items: center;

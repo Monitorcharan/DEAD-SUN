@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -74,32 +75,8 @@ class _GameLaunchScreenState extends State<GameLaunchScreen>
   int _stepIdx = 0;
   Timer? _stepTimer;
 
-  // Complete offline bundled asset manifest fallback list (84 assets)
-  static const List<String> _fallbackAssetFiles = [
-    "asset1.png", "asset2.png", "asset3.png", "asset4.png", "asset5.png",
-    "asset6.png", "asset7.png", "astronaught .png", "astronaut.png", "audio.js",
-    "background_scene_for_sun.png", "dialogue_astronaut.png", "dialogue_screen.png",
-    "dialogue_screen_improved.png", "flare_48s.png", "flare_50s.png", "flare_52s.png",
-    "flare_54s.png", "flare_56s.png", "flare_58s.png", "flare_60s.png", "flare_62s.png",
-    "flare_64s.png", "flare_66s.png", "flare_68s.png", "flare_70s.png", "flare_72s.png",
-    "flare_detail_51s.png", "flare_detail_52s.png", "flare_detail_53s.png", "flare_detail_54s.png",
-    "flare_detail_55s.png", "flare_detail_56s.png", "frame_12s.png", "frame_18s.png",
-    "frame_25s.png", "frame_35s.png", "frame_45s.png", "frame_55s.png", "frame_5s.png",
-    "frame_65s.png", "frame_75s.png", "frame_85s.png", "game.js", "gameplay_active.png",
-    "gameplay_screen.png", "giant_approaching1.png", "index.html", "logo_red_sun.jpg",
-    "music.mp3",
-    "paused_screen.png", "pixi.min.js", "rec_cooling_card_active.png", "rec_dialogue.png",
-    "rec_quip_bubble_active.png", "rec_step1_dialogue.png", "rec_step2_title.png",
-    "rec_step3_countdown.png", "rec_step4_cooling_card.png", "rec_step5_quip.png",
-    "rec_step6_terminal.png", "rec_supply_drop_active.png", "screen_dash.png",
-    "screen_dialogue_final.png", "screen_firestorm_and_sun.png", "screen_gameover.png",
-    "screen_gameplay_clean.png", "screen_gameplay_final.png", "screen_gameplay_pure.png",
-    "screen_in_shade.png", "screen_paused_final.png", "screen_shade_quip.png",
-    "screen_shade_verified.png", "screen_solar_flare_surge.png", "screen_sun_looming_close.png",
-    "style.css", "sun.png", "sun_crop_50s.png", "sun_crop_51s.png", "sun_crop_52s.png",
-    "sun_crop_53s.png", "sun_crop_54s.png", "sun_crop_55s.png", "sun_crop_56s.png",
-    "sun_glow.png"
-  ];
+  // Runtime assets only; exclude screenshots and development captures.
+  static const List<String> _fallbackAssetFiles = ["index.html", "style.css", "responsive.css", "runtime-config.js", "game.js", "audio.js", "pixi.min.js", "music.mp3", "asset1.png", "asset2.png", "asset3.png", "asset4.png", "asset5.png", "asset6.png", "asset7.png", "sun.png", "sun_glow.png", "background_scene_for_sun.png", "giant_approaching1.png", "astronaut.png", "logo_red_sun.jpg", "dialogue_astronaut.png"];
 
   @override
   void initState() {
@@ -220,7 +197,7 @@ class _GameLaunchScreenState extends State<GameLaunchScreen>
       _localServer = await shelf_io.serve(
         pipeline,
         InternetAddress.loopbackIPv4,
-        0, // 0 selects an available system port
+        8765, // Stable origin preserves WebView localStorage between launches
       );
       _serverPort = _localServer!.port;
       final serverUrl = 'http://127.0.0.1:$_serverPort/index.html';
@@ -268,6 +245,12 @@ class _GameLaunchScreenState extends State<GameLaunchScreen>
       ..setBackgroundColor(const Color(0xFF040207))
       ..setNavigationDelegate(
         NavigationDelegate(
+          onNavigationRequest: (request) {
+            final destination = Uri.tryParse(request.url);
+            final origin = Uri.tryParse(target);
+            return destination != null && origin != null && destination.origin == origin.origin
+                ? NavigationDecision.navigate : NavigationDecision.prevent;
+          },
           onPageStarted: (url) {
             debugPrint("Game engine starting: $url");
             if (mounted) {
@@ -280,6 +263,8 @@ class _GameLaunchScreenState extends State<GameLaunchScreen>
             debugPrint("Game engine loaded: $url");
             // Inject touch controls activation & mobile readiness
             controller.runJavaScript('''
+              window.DEAD_SUN_API_URL = ${jsonEncode(const String.fromEnvironment('DEAD_SUN_API_URL'))};
+              document.getElementById('btn-download-apk')?.remove();
               document.body.classList.add('touch-enabled');
               if (window.deadSunGame) {
                 window.deadSunGame.touchMode = 'ON';
@@ -292,6 +277,8 @@ class _GameLaunchScreenState extends State<GameLaunchScreen>
                 setState(() {
                   _loadProgress = 1.0;
                   _statusText = "ORBIT STABILIZED • ENTERING ATMOSPHERE";
+                  _pulseController.stop();
+                  _stepTimer?.cancel();
                   _isGameLoaded = true;
                   _hasFatalError = false;
                 });
@@ -429,7 +416,7 @@ class _GameLaunchScreenState extends State<GameLaunchScreen>
                           Text(
                             'SHELTER FROM THE RED GIANT • FLEE THE FIRESTORM',
                             style: TextStyle(
-                              fontSize: 11,
+                              fontSize: 14,
                               fontWeight: FontWeight.w600,
                               letterSpacing: 2.0,
                               color: const Color(0xFF43E1FF).withValues(alpha: 0.85),
@@ -459,7 +446,7 @@ class _GameLaunchScreenState extends State<GameLaunchScreen>
                             _statusText,
                             style: TextStyle(
                               fontFamily: 'monospace',
-                              fontSize: 11,
+                              fontSize: 14,
                               letterSpacing: 1.5,
                               color: _hasFatalError
                                   ? const Color(0xFFFF4444)
