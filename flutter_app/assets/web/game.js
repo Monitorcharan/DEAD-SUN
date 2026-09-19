@@ -1773,12 +1773,13 @@ class DeadSunGame {
     this.nextSpawnX = 420;
     this.nextLavaX = 650;
     this.nextSupplyX = 1300;
+    this.lastPattern = -1;
 
     // Spawn start shelter (Asset 1 with blue sphere)
     this.spawnShelterOfType(1, 200, 210);
 
-    // Spawn shelters ahead
-    for (let i = 0; i < 7; i++) {
+    // Spawn initial tactical formations ahead across all zones
+    for (let i = 0; i < 5; i++) {
       this.spawnNextObstacle();
     }
 
@@ -2058,23 +2059,23 @@ class DeadSunGame {
     return obstacleObj;
   }
 
-  canSpawnObstacleAt(x, y, w, h) {
-    const bufferX = 40;
-    const bufferY = 30;
+  canSpawnObstacleAt(x, y, w, solidH) {
+    const bufferX = 25;
+    const bufferY = 20;
     for (const obs of this.obstacles) {
       const ox = obs.x;
       const oy = obs.y;
       const ow = obs.w || 150;
-      const oh = (obs.solidH || 80) + (obs.shadowH || 100);
+      const oh = obs.solidH || 80;
       if (x < ox + ow + bufferX &&
           x + w + bufferX > ox &&
           y < oy + oh + bufferY &&
-          y + h + bufferY > oy) {
+          y + solidH + bufferY > oy) {
         return false;
       }
     }
     for (const lava of this.lavaPools) {
-      if (Math.abs(x - lava.x) < 70 && Math.abs(y - lava.y) < 50) {
+      if (Math.abs(x - lava.x) < 65 && Math.abs(y - lava.y) < 40) {
         return false;
       }
     }
@@ -2082,81 +2083,178 @@ class DeadSunGame {
   }
 
   spawnNextObstacle() {
-    // Safe 3-Lane Staggered Generator (Top, Mid, Bottom)
-    // Ensures obstacles are never stacked closely and bottom lane never clips mobile display
-    const laneId = (this.lastSpawnLane === 0) ? (Math.random() < 0.5 ? 1 : 2) :
-                   (this.lastSpawnLane === 2) ? (Math.random() < 0.5 ? 0 : 1) :
-                   (Math.random() < 0.5 ? 0 : 2);
-    this.lastSpawnLane = laneId;
+    // 7 Tactical Formations — Full vertical range PLAY_MIN_Y(175) to PLAY_MAX_Y(545)
+    // Extreme Top: Y 148-168 | Extreme Bottom: Y 455-480 (solidH@0.48 keeps bottom edge ≤545)
+    // Increased horizontal spacing to avoid straight-line feel; corridors tightened for difficulty
+    const patternList = [0, 1, 2, 3, 4, 5, 6];
+    let pattern;
+    do {
+      pattern = patternList[Math.floor(Math.random() * patternList.length)];
+    } while (pattern === this.lastPattern && patternList.length > 1);
+    this.lastPattern = pattern;
 
-    // Pick asset suitable for lane height:
-    // Tall monolithic assets (1, 3) must be in top/mid lanes; compact assets (2, 4, 7, 6) can be anywhere
-    let typeId;
-    if (laneId === 0) {
-      typeId = Math.random() < 0.45 ? 1 : (Math.floor(Math.random() * 6) + 2); // 1 to 7
-    } else if (laneId === 1) {
-      typeId = [2, 3, 4, 5, 6, 7][Math.floor(Math.random() * 6)];
-    } else {
-      // Bottom lane: only compact shelters (types 2, 4, 7, 6) that comfortably fit on mobile screen
-      typeId = [2, 4, 7, 6][Math.floor(Math.random() * 4)];
-    }
+    const baseX = this.nextSpawnX;
 
-    const spec = ASSET_SPECS[typeId];
-    const scale = 0.48;
-    const totalW = spec.w * scale;
-    const solidH = spec.solidH * scale;
-    const shadowH = spec.shadowH * scale;
-    const totalH = solidH + shadowH;
+    switch (pattern) {
+      case 0: {
+        // --- FORMATION 0: DUAL PINCER GATE ---
+        // Top AND true-extreme-bottom obstacles simultaneously; narrow corridor in center
+        const topType = [1, 3, 5, 6][Math.floor(Math.random() * 4)];
+        const topY = 148 + Math.random() * 18; // 148–166
+        this.spawnShelterOfType(topType, baseX, topY);
 
-    // Strict vertical clamping: absolute maximum bottom is 515
-    const maxBottom = 515;
-    let yLane;
-    if (laneId === 0) {
-      yLane = PLAY_MIN_Y + Math.random() * 30; // 175 - 205
-    } else if (laneId === 1) {
-      yLane = 245 + Math.random() * 30; // 245 - 275
-    } else {
-      yLane = Math.min(365, maxBottom - totalH); // 345 - 365
-    }
+        const botType = [7, 4][Math.floor(Math.random() * 2)];
+        const botX = baseX + 20 + Math.random() * 50;
+        // True extreme bottom: solidH*0.48 for type7=60, type4=70 → safe at Y=470
+        const botY = 460 + Math.random() * 18; // 460–478
+        this.spawnShelterOfType(botType, botX, botY);
 
-    // Double check safe bottom bound
-    if (yLane + totalH > maxBottom) {
-      yLane = maxBottom - totalH;
-    }
-    if (yLane < PLAY_MIN_Y) {
-      yLane = PLAY_MIN_Y;
-    }
+        // Lava pool mid-left to close the easy path
+        this.spawnLavaPool(baseX + 80 + Math.random() * 40, 290 + Math.random() * 30);
 
-    let xPos = this.nextSpawnX + Math.random() * 30;
-
-    // Verify spacing clearance to guarantee obstacles are never stacked closely
-    if (!this.canSpawnObstacleAt(xPos, yLane, totalW, totalH)) {
-      xPos += 60;
-    }
-
-    this.spawnShelterOfType(typeId, xPos, yLane);
-
-    // Rhythmic advance: denser flow (+more obstacles) while preserving clean lane clearance
-    this.nextSpawnX = xPos + totalW * 0.70 + 75 + Math.random() * 55;
-
-    // Staggered Lava Hazard Pools (in alternating lanes with verified clearance)
-    if (xPos > this.nextLavaX) {
-      const hazardLaneId = (laneId === 1) ? (Math.random() < 0.5 ? 0 : 2) : 1;
-      let lavaY = (hazardLaneId === 0) ? (PLAY_MIN_Y + 15 + Math.random() * 30) :
-                  (hazardLaneId === 1) ? (280 + Math.random() * 40) :
-                  (390 + Math.random() * 40);
-      const lavaX = xPos + totalW * 0.5 + 40;
-      if (this.canSpawnObstacleAt(lavaX - 60, lavaY - 30, 120, 60)) {
-        this.spawnLavaPool(lavaX, lavaY);
+        const maxW = Math.max((ASSET_SPECS[topType].w || 300) * 0.48, (ASSET_SPECS[botType].w || 250) * 0.48);
+        this.nextSpawnX = Math.max(botX, baseX) + maxW + 150 + Math.random() * 60;
+        break;
       }
-      this.nextLavaX = xPos + 220 + Math.random() * 180;
+
+      case 1: {
+        // --- FORMATION 1: EXTREME-BOTTOM ANCHOR + TOP LAVA ---
+        // Forces player to find a safe mid-corridor while both extremes are blocked
+        const lavaY = PLAY_MIN_Y + 5 + Math.random() * 15; // 180–195
+        this.spawnLavaPool(baseX + 30, lavaY);
+
+        // Second lava at extreme bottom
+        this.spawnLavaPool(baseX + 55 + Math.random() * 30, 490 + Math.random() * 10);
+
+        const midType = [2, 4, 5, 6][Math.floor(Math.random() * 4)];
+        const midX = baseX + 120 + Math.random() * 40;
+        const midY = 230 + Math.random() * 30; // 230–260
+        this.spawnShelterOfType(midType, midX, midY);
+
+        // Shelter at extreme bottom zone to create "graze" challenge
+        const botType = [7][0];
+        const botX = midX + 130 + Math.random() * 50;
+        const botY = 462 + Math.random() * 15; // 462–477
+        this.spawnShelterOfType(botType, botX, botY);
+
+        this.nextSpawnX = botX + (ASSET_SPECS[botType].w * 0.48) + 140 + Math.random() * 50;
+        break;
+      }
+
+      case 2: {
+        // --- FORMATION 2: INVERTED SLALOM (Top monolith → Mid shelter → Bottom lava) ---
+        const topType = [1, 3, 6][Math.floor(Math.random() * 3)];
+        const topY = 148 + Math.random() * 18; // 148–166
+        this.spawnShelterOfType(topType, baseX, topY);
+
+        const midType = [4, 7, 2][Math.floor(Math.random() * 3)];
+        const midX = baseX + 140 + Math.random() * 50;
+        const midY = 285 + Math.random() * 30; // 285–315
+        this.spawnShelterOfType(midType, midX, midY);
+
+        // True extreme-bottom lava pool
+        this.spawnLavaPool(midX + 25 + Math.random() * 30, 492 + Math.random() * 10);
+
+        this.nextSpawnX = midX + (ASSET_SPECS[midType].w * 0.48) + 140 + Math.random() * 50;
+        break;
+      }
+
+      case 3: {
+        // --- FORMATION 3: CENTRAL CITADEL + EDGE SENTINELS ---
+        const isTopSentinel = Math.random() < 0.5;
+        const sentType = [7, 2][Math.floor(Math.random() * 2)];
+        // Extreme top or true extreme bottom
+        const sentY = isTopSentinel ? (148 + Math.random() * 18) : (462 + Math.random() * 15);
+        this.spawnShelterOfType(sentType, baseX, sentY);
+
+        const centerType = [1, 5, 3][Math.floor(Math.random() * 3)];
+        const centerX = baseX + 120 + Math.random() * 40;
+        const centerY = 248 + Math.random() * 30; // 248–278 (tight center)
+        this.spawnShelterOfType(centerType, centerX, centerY);
+
+        // Opposite extreme lava pool
+        const oppLavaY = isTopSentinel ? (492 + Math.random() * 10) : (180 + Math.random() * 15);
+        this.spawnLavaPool(centerX + 35 + Math.random() * 25, oppLavaY);
+
+        this.nextSpawnX = centerX + (ASSET_SPECS[centerType].w * 0.48) + 140 + Math.random() * 50;
+        break;
+      }
+
+      case 4: {
+        // --- FORMATION 4: FULL-RANGE CASCADE (Top → Center → True Bottom diagonal) ---
+        const topFirst = Math.random() < 0.5;
+        const yTop = 150 + Math.random() * 15;
+        const yMid = 270 + Math.random() * 25; // center-ish
+        const yBot = 460 + Math.random() * 16; // true extreme bottom
+        const ySeq = topFirst ? [yTop, yMid, yBot] : [yBot, yMid, yTop];
+        const typeSeq = topFirst ? [6, 4, 7] : [7, 4, 6];
+
+        let currX = baseX;
+        for (let s = 0; s < 3; s++) {
+          const sType = typeSeq[s];
+          this.spawnShelterOfType(sType, currX, ySeq[s]);
+          // Wider horizontal gaps so they don't feel like a straight line
+          currX += (ASSET_SPECS[sType].w * 0.48) * 0.65 + 90 + Math.random() * 35;
+        }
+        this.nextSpawnX = currX + 80 + Math.random() * 45;
+        break;
+      }
+
+      case 5: {
+        // --- FORMATION 5: TWIN APEX + TRUE EXTREME BOTTOM HAZARD ---
+        const s1Type = [3, 5, 6][Math.floor(Math.random() * 3)];
+        const s1Y = 150 + Math.random() * 18;
+        this.spawnShelterOfType(s1Type, baseX, s1Y);
+
+        const s2Type = [7, 4][Math.floor(Math.random() * 2)];
+        const s2X = baseX + 95 + Math.random() * 40;
+        // True extreme bottom
+        const s2Y = 460 + Math.random() * 16;
+        this.spawnShelterOfType(s2Type, s2X, s2Y);
+
+        // Close the mid-zone with a lava pool
+        this.spawnLavaPool(baseX + 50 + Math.random() * 30, 300 + Math.random() * 40);
+
+        const maxW = Math.max((ASSET_SPECS[s1Type].w || 300) * 0.48, (ASSET_SPECS[s2Type].w || 250) * 0.48);
+        this.nextSpawnX = s2X + maxW + 150 + Math.random() * 55;
+        break;
+      }
+
+      case 6: {
+        // --- FORMATION 6: TRIPLE THREAT GAUNTLET (Max Difficulty) ---
+        // Three obstacles: extreme top + mid + extreme bottom — the hardest formation
+        const topType = [6, 3][Math.floor(Math.random() * 2)];
+        const topY = 148 + Math.random() * 18;
+        this.spawnShelterOfType(topType, baseX, topY);
+
+        const midType = [2, 4][Math.floor(Math.random() * 2)];
+        const midX = baseX + 130 + Math.random() * 40;
+        const midY = 268 + Math.random() * 20; // 268–288 (tight center, hard to pass)
+        this.spawnShelterOfType(midType, midX, midY);
+
+        const botType = [7][0];
+        const botX = midX + 110 + Math.random() * 40;
+        const botY = 462 + Math.random() * 14; // 462–476
+        this.spawnShelterOfType(botType, botX, botY);
+
+        // Lava pool between mid and bot to seal the bottom escape
+        this.spawnLavaPool(midX + 30, 490 + Math.random() * 8);
+
+        const maxW = Math.max(
+          (ASSET_SPECS[topType].w || 300) * 0.48,
+          (ASSET_SPECS[midType].w || 250) * 0.48,
+          (ASSET_SPECS[botType].w || 200) * 0.48
+        );
+        this.nextSpawnX = botX + maxW + 160 + Math.random() * 60;
+        break;
+      }
     }
 
-    // Supply Drop Caches
-    if (xPos > this.nextSupplyX) {
-      const supY = PLAY_MIN_Y + 30 + Math.random() * (PLAY_MAX_Y - PLAY_MIN_Y - 70);
-      this.spawnSupplyDrop(xPos + 90, supY);
-      this.nextSupplyX = xPos + 850 + Math.random() * 450;
+    // Supply drop placement
+    if (this.nextSpawnX > this.nextSupplyX) {
+      const supY = 220 + Math.random() * 240;
+      this.spawnSupplyDrop(this.nextSpawnX - 60, supY);
+      this.nextSupplyX = this.nextSpawnX + 900 + Math.random() * 450;
     }
   }
 
@@ -2210,6 +2308,8 @@ class DeadSunGame {
     this.lavaPools.push({
       x,
       y,
+      rx,
+      ry,
       radius: Math.max(rx, ry),
       gfx: lavaGfx
     });
@@ -2475,13 +2575,16 @@ class DeadSunGame {
         this.player.shelterTime = 0;
       }
 
-      // Lava Hazards Collision
+      // Lava Hazards Collision (Accurate elliptical hit detection)
       if (!this.player.hasBoots) {
         for (const lava of this.lavaPools) {
-          const d = Math.hypot(this.player.x - lava.x, this.player.y - lava.y);
-          if (d < lava.radius) {
-            this.heat = Math.min(1.0, this.heat + 0.65 * dt);
-            this.camera.shakeIntensity = Math.max(this.camera.shakeIntensity, 3);
+          const rx = lava.rx || lava.radius || 55;
+          const ry = lava.ry || (lava.radius * 0.5) || 26;
+          const dx = this.player.x - lava.x;
+          const dy = this.player.y - lava.y;
+          if ((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) < 1.0) {
+            this.heat = Math.min(1.0, this.heat + 0.75 * dt);
+            this.camera.shakeIntensity = Math.max(this.camera.shakeIntensity, 4);
           }
         }
       }
