@@ -22,7 +22,8 @@ const CORE_FILES = [
   'style.css',
   'game.js',
   'audio.js',
-  'pixi.min.js'
+  'pixi.min.js',
+  'music.mp3'
 ];
 
 for (const file of CORE_FILES) {

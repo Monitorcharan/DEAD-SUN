@@ -87,6 +87,7 @@ class _GameLaunchScreenState extends State<GameLaunchScreen>
     "frame_25s.png", "frame_35s.png", "frame_45s.png", "frame_55s.png", "frame_5s.png",
     "frame_65s.png", "frame_75s.png", "frame_85s.png", "game.js", "gameplay_active.png",
     "gameplay_screen.png", "giant_approaching1.png", "index.html", "logo_red_sun.jpg",
+    "music.mp3",
     "paused_screen.png", "pixi.min.js", "rec_cooling_card_active.png", "rec_dialogue.png",
     "rec_quip_bubble_active.png", "rec_step1_dialogue.png", "rec_step2_title.png",
     "rec_step3_countdown.png", "rec_step4_cooling_card.png", "rec_step5_quip.png",

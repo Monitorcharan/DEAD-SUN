@@ -1144,6 +1144,15 @@ class DeadSunGame {
       this.keys[e.code] = false;
     });
 
+    // Global UI Button tactile audio feedback
+    document.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (window.soundEngine && window.soundEngine.playButtonClick) {
+          window.soundEngine.playButtonClick();
+        }
+      });
+    });
+
     // UI Button bindings
     this.dom.btnStart.addEventListener('click', () => {
       if (window.soundEngine) {
@@ -2366,7 +2375,16 @@ class DeadSunGame {
           this.playerSprite.scale.y = baseScale;
           this.playerSprite.y = Math.sin(this.elapsedTime * 14) * 1.8;
         }
+        // Tactile astronaut regolith footstep cadence
+        this.footstepTimer = (this.footstepTimer || 0) - dt;
+        if (this.footstepTimer <= 0) {
+          this.footstepTimer = this.player.isDashing ? 0.18 : 0.36;
+          if (window.soundEngine && window.soundEngine.playFootstep) {
+            window.soundEngine.playFootstep();
+          }
+        }
       } else {
+        this.footstepTimer = 0.05;
         if (this.playerSprite) {
           this.playerSprite.y = 0;
         }
