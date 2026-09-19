@@ -17,7 +17,6 @@ trailer_analysis/
 trailer_assets/
 .playwright-mcp/
 *.mp4
-*.apk
 test_*.py
 reproduce_*.py
 verify_*.py

@@ -1327,6 +1327,44 @@ canvas {
   background: rgba(30, 80, 45, 0.8);
 }
 
+/* APK Download Button — Android Green Accent */
+.apk-download-btn {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #a4c639 !important;
+  border-color: #a4c639 !important;
+  background: rgba(40, 60, 10, 0.6) !important;
+  box-shadow: 0 0 16px rgba(164, 198, 57, 0.3) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.apk-download-btn:hover {
+  color: #c8e64e !important;
+  background: rgba(60, 90, 15, 0.8) !important;
+  box-shadow: 0 0 30px rgba(164, 198, 57, 0.7) !important;
+  transform: scale(1.05);
+}
+
+.apk-download-btn::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(45deg, transparent 40%, rgba(164, 198, 57, 0.12) 50%, transparent 60%);
+  animation: apk-shimmer 3s ease-in-out infinite;
+}
+
+@keyframes apk-shimmer {
+  0%   { transform: translateX(-100%) rotate(45deg); }
+  100% { transform: translateX(100%) rotate(45deg); }
+}
+
 /* =========================================
    ON-SCREEN MOBILE CONTROLS
    ========================================= */

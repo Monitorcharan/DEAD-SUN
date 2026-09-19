@@ -8,9 +8,38 @@
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
 const DB_FILE = path.join(__dirname, 'scores.json');
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || crypto.randomBytes(16).toString('hex');
+const MAX_BODY_SIZE = 4096; // 4KB max payload
+
+// Rate limiter: per-IP, max 5 score submissions per 60 seconds
+const RATE_WINDOW_MS = 60000;
+const RATE_MAX_HITS = 5;
+const rateLimitMap = new Map(); // ip -> { count, resetTime }
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  let entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.resetTime) {
+    entry = { count: 1, resetTime: now + RATE_WINDOW_MS };
+    rateLimitMap.set(ip, entry);
+    return true;
+  }
+  entry.count++;
+  if (entry.count > RATE_MAX_HITS) return false;
+  return true;
+}
+
+// Periodically clean stale rate limit entries (every 5 min)
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of rateLimitMap) {
+    if (now > entry.resetTime) rateLimitMap.delete(ip);
+  }
+}, 300000);
 
 // Auto-detect static assets directory (works whether run from root, server, or Render cloud)
 function resolveStaticDir() {
@@ -193,17 +222,25 @@ const MIME_TYPES = {
   '.jpg': 'image/jpeg',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
-  '.mp4': 'video/mp4'
+  '.mp4': 'video/mp4',
+  '.mp3': 'audio/mpeg',
+  '.apk': 'application/vnd.android.package-archive',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf'
 };
 
 // =========================================================
 // 2. HTTP SERVER & API ROUTING
 // =========================================================
 const server = http.createServer(async (req, res) => {
-  // CORS Headers
+  // Security Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -234,12 +271,52 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 3. POST /api/score
+  // 3. GET /download/apk — Serve the Android APK with proper headers
+  if (req.method === 'GET' && pathname === '/download/apk') {
+    const apkPath = path.join(STATIC_DIR, 'THE_RED_SUN.apk');
+    if (!fs.existsSync(apkPath)) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'error', message: 'APK not available' }));
+      return;
+    }
+    try {
+      const stat = fs.statSync(apkPath);
+      res.writeHead(200, {
+        'Content-Type': 'application/vnd.android.package-archive',
+        'Content-Disposition': 'attachment; filename="THE_RED_SUN.apk"',
+        'Content-Length': stat.size,
+        'Cache-Control': 'public, max-age=86400'
+      });
+      const stream = fs.createReadStream(apkPath);
+      stream.on('error', (err) => {
+        console.error('[APK] Stream error:', err.message);
+        if (!res.headersSent) res.writeHead(500);
+        res.end();
+      });
+      stream.pipe(res);
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'error', message: 'APK download failed' }));
+    }
+    return;
+  }
+
+  // 4. POST /api/score
   if (req.method === 'POST' && pathname === '/api/score') {
+    // Rate limit check
+    const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+    if (!checkRateLimit(clientIp)) {
+      res.writeHead(429, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'error', message: 'Too many submissions. Try again later.' }));
+      return;
+    }
+
     let body = '';
     req.on('data', chunk => {
       body += chunk.toString();
-      if (body.length > 1e6) req.socket.destroy(); // Flood protection
+      if (body.length > MAX_BODY_SIZE) {
+        req.socket.destroy(); // Flood protection
+      }
     });
 
     req.on('end', async () => {
@@ -294,8 +371,20 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 4. POST /api/admin/clear-database & /api/reset-scores (Wipe entire database as requested)
+  // 5. POST /api/admin/clear-database & /api/reset-scores (Protected admin action)
   if (req.method === 'POST' && (pathname === '/api/admin/clear-database' || pathname === '/api/reset-scores')) {
+    // Admin authentication: require Authorization header or admin_token query param
+    const authHeader = req.headers['authorization'] || '';
+    const queryToken = urlObj.searchParams.get('admin_token') || '';
+    const providedToken = authHeader.replace('Bearer ', '') || queryToken;
+
+    if (providedToken !== ADMIN_TOKEN) {
+      console.warn(`[SECURITY] Unauthorized database clear attempt from ${req.socket.remoteAddress}`);
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'forbidden', message: 'Admin authentication required' }));
+      return;
+    }
+
     try {
       scoresCache = [];
       saveScores([]);
@@ -307,7 +396,7 @@ const server = http.createServer(async (req, res) => {
           console.error('[DATABASE] Failed to truncate table:', pgErr.message);
         }
       }
-      console.log('[DATABASE] All leaderboard data wiped clean.');
+      console.log('[DATABASE] All leaderboard data wiped clean by admin.');
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'ok', message: 'Leaderboard database cleared successfully', count: 0 }));
     } catch (err) {
@@ -379,6 +468,10 @@ server.listen(PORT, () => {
   console.log(` DB Mode:  ${pgPool ? 'PostgreSQL (Active)' : 'Local JSON Fallback'} `);
   console.log(` API:      http://localhost:${PORT}/api/leaderboard`);
   console.log(` Health:   http://localhost:${PORT}/api/health     `);
+  console.log(` APK:      http://localhost:${PORT}/download/apk   `);
   console.log(` Static:   ${STATIC_DIR}                           `);
+  if (!process.env.ADMIN_TOKEN) {
+    console.log(` Admin:    ${ADMIN_TOKEN} (auto-generated)       `);
+  }
   console.log(`====================================================`);
 });
