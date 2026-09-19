@@ -272,7 +272,24 @@ class DeadSunGame {
       btnCloseLeaderboard: document.getElementById('btn-close-leaderboard'),
       btnClearDatabase: document.getElementById('btn-clear-database'),
       // Real-Time Pre-Game Pilot Registration
-      splashCallsignInput: document.getElementById('splash-callsign-input')
+      splashCallsignInput: document.getElementById('splash-callsign-input'),
+      // Mobile Controls Customization Modal
+      btnPauseControls: document.getElementById('btn-pause-controls'),
+      btnSplashControls: document.getElementById('btn-splash-controls'),
+      controlsModal: document.getElementById('controls-modal'),
+      btnCloseControlsX: document.getElementById('btn-close-controls-x'),
+      btnSaveControls: document.getElementById('btn-save-controls'),
+      btnResetControls: document.getElementById('btn-reset-controls'),
+      sliderJoySize: document.getElementById('slider-joy-size'),
+      sliderJoyX: document.getElementById('slider-joy-x'),
+      sliderJoyY: document.getElementById('slider-joy-y'),
+      sliderDashSize: document.getElementById('slider-dash-size'),
+      valCtrlJoySize: document.getElementById('val-ctrl-joy-size'),
+      valCtrlJoyX: document.getElementById('val-ctrl-joy-x'),
+      valCtrlJoyY: document.getElementById('val-ctrl-joy-y'),
+      valCtrlDashSize: document.getElementById('val-ctrl-dash-size'),
+      btnSideLeft: document.getElementById('btn-side-left'),
+      btnSideRight: document.getElementById('btn-side-right')
     };
 
     // Terminal typewriter timers & state
@@ -282,6 +299,9 @@ class DeadSunGame {
 
     // Pilot Callsign (Registered on Start Splash Screen)
     this.playerCallsign = (localStorage.getItem('deadsun_callsign') || 'PILOT').toUpperCase().slice(0, 8);
+
+    // Mobile Joystick Customization Settings
+    this.joystickSettings = this.loadJoystickSettings();
 
     // Mobile Dual-Zone Touch State
     this.touchMode = 'AUTO'; // 'AUTO', 'ON', 'OFF'
@@ -1216,6 +1236,8 @@ class DeadSunGame {
 
     // Initialize Mobile Touch Controls
     this.initTouchControls();
+    this.applyJoystickSettings();
+    this.setupControlsModalListeners();
     this.applyTouchMode();
   }
 
@@ -1405,6 +1427,267 @@ class DeadSunGame {
         document.body.classList.remove('touch-enabled');
         layer.style.display = '';
       }
+    }
+  }
+
+  /* =======================================================
+     MOBILE JOYSTICK & CONTROLS CUSTOMIZATION ENGINE
+     ======================================================= */
+  loadJoystickSettings() {
+    const defaults = {
+      size: 100,
+      side: 'left',
+      offsetX: 24,
+      offsetY: 24,
+      dashSize: 100
+    };
+    try {
+      const saved = localStorage.getItem('deadsun_joystick_settings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          size: typeof parsed.size === 'number' ? Math.max(70, Math.min(160, parsed.size)) : defaults.size,
+          side: (parsed.side === 'right' || parsed.side === 'left') ? parsed.side : defaults.side,
+          offsetX: typeof parsed.offsetX === 'number' ? Math.max(10, Math.min(140, parsed.offsetX)) : defaults.offsetX,
+          offsetY: typeof parsed.offsetY === 'number' ? Math.max(10, Math.min(140, parsed.offsetY)) : defaults.offsetY,
+          dashSize: typeof parsed.dashSize === 'number' ? Math.max(70, Math.min(150, parsed.dashSize)) : defaults.dashSize
+        };
+      }
+    } catch (e) {
+      console.warn("Failed to load joystick settings", e);
+    }
+    return defaults;
+  }
+
+  saveJoystickSettings() {
+    try {
+      localStorage.setItem('deadsun_joystick_settings', JSON.stringify(this.joystickSettings));
+    } catch (e) {
+      console.warn("Failed to save joystick settings", e);
+    }
+  }
+
+  applyJoystickSettings() {
+    const s = this.joystickSettings;
+    const jZone = this.dom.joystickZone;
+    const jBase = this.dom.joystickBase;
+    const jThumb = this.dom.joystickThumb;
+    const aZone = this.dom.actionZone;
+    const dashBtn = this.dom.touchBtnDash;
+
+    if (!jZone || !jBase || !jThumb || !aZone || !dashBtn) return;
+
+    const joyScale = s.size / 100;
+    const baseDim = Math.round(130 * joyScale);
+    const thumbDim = Math.round(52 * joyScale);
+    const jZoneDim = Math.max(baseDim + 20, 150);
+    this.touchJoystick.maxRadius = Math.round(46 * joyScale);
+
+    const dashScale = s.dashSize / 100;
+    const dashDim = Math.round(96 * dashScale);
+    const aZoneDim = Math.max(dashDim + 20, 150);
+
+    // Size updates
+    jZone.style.width = `${jZoneDim}px`;
+    jZone.style.height = `${jZoneDim}px`;
+    jBase.style.width = `${baseDim}px`;
+    jBase.style.height = `${baseDim}px`;
+    jThumb.style.width = `${thumbDim}px`;
+    jThumb.style.height = `${thumbDim}px`;
+
+    aZone.style.width = `${aZoneDim}px`;
+    aZone.style.height = `${aZoneDim}px`;
+    dashBtn.style.width = `${dashDim}px`;
+    dashBtn.style.height = `${dashDim}px`;
+
+    const icon = dashBtn.querySelector('.touch-dash-icon');
+    const label = dashBtn.querySelector('.touch-dash-label');
+    if (icon) icon.style.fontSize = `${Math.round(26 * dashScale)}px`;
+    if (label) label.style.fontSize = `${Math.round(11 * dashScale)}px`;
+
+    // Position updates
+    if (s.side === 'right') {
+      // Southpaw: Joystick on Right, Dash on Left
+      jZone.style.left = 'auto';
+      jZone.style.right = `calc(${s.offsetX}px + env(safe-area-inset-right, 0px))`;
+      jZone.style.bottom = `calc(${s.offsetY}px + env(safe-area-inset-bottom, 0px))`;
+
+      aZone.style.right = 'auto';
+      aZone.style.left = `calc(${s.offsetX}px + env(safe-area-inset-left, 0px))`;
+      aZone.style.bottom = `calc(${s.offsetY}px + env(safe-area-inset-bottom, 0px))`;
+    } else {
+      // Default: Joystick on Left, Dash on Right
+      jZone.style.right = 'auto';
+      jZone.style.left = `calc(${s.offsetX}px + env(safe-area-inset-left, 0px))`;
+      jZone.style.bottom = `calc(${s.offsetY}px + env(safe-area-inset-bottom, 0px))`;
+
+      aZone.style.left = 'auto';
+      aZone.style.right = `calc(${s.offsetX}px + env(safe-area-inset-right, 0px))`;
+      aZone.style.bottom = `calc(${s.offsetY}px + env(safe-area-inset-bottom, 0px))`;
+    }
+  }
+
+  updateControlsModalUI() {
+    const s = this.joystickSettings;
+    if (this.dom.sliderJoySize) this.dom.sliderJoySize.value = s.size;
+    if (this.dom.valCtrlJoySize) this.dom.valCtrlJoySize.innerText = `${s.size}%`;
+
+    if (this.dom.sliderJoyX) this.dom.sliderJoyX.value = s.offsetX;
+    if (this.dom.valCtrlJoyX) this.dom.valCtrlJoyX.innerText = `${s.offsetX}px`;
+
+    if (this.dom.sliderJoyY) this.dom.sliderJoyY.value = s.offsetY;
+    if (this.dom.valCtrlJoyY) this.dom.valCtrlJoyY.innerText = `${s.offsetY}px`;
+
+    if (this.dom.sliderDashSize) this.dom.sliderDashSize.value = s.dashSize;
+    if (this.dom.valCtrlDashSize) this.dom.valCtrlDashSize.innerText = `${s.dashSize}%`;
+
+    if (this.dom.btnSideLeft && this.dom.btnSideRight) {
+      if (s.side === 'right') {
+        this.dom.btnSideRight.classList.add('active');
+        this.dom.btnSideLeft.classList.remove('active');
+      } else {
+        this.dom.btnSideLeft.classList.add('active');
+        this.dom.btnSideRight.classList.remove('active');
+      }
+    }
+
+    // Update preset pills active state
+    if (this.dom.controlsModal) {
+      const presetBtns = this.dom.controlsModal.querySelectorAll('.ctrl-preset-btn');
+      presetBtns.forEach(btn => {
+        const p = btn.getAttribute('data-preset');
+        let matches = false;
+        if (p === 'default' && s.size === 100 && s.side === 'left' && s.offsetX === 24 && s.offsetY === 24 && s.dashSize === 100) matches = true;
+        else if (p === 'compact' && s.size === 80 && s.side === 'left' && s.offsetX === 16 && s.offsetY === 16 && s.dashSize === 85) matches = true;
+        else if (p === 'large' && s.size === 130 && s.side === 'left' && s.offsetX === 32 && s.offsetY === 32 && s.dashSize === 120) matches = true;
+        else if (p === 'southpaw' && s.size === 100 && s.side === 'right' && s.offsetX === 24 && s.offsetY === 24 && s.dashSize === 100) matches = true;
+
+        if (matches) btn.classList.add('active');
+        else btn.classList.remove('active');
+      });
+    }
+  }
+
+  openControlsModal() {
+    if (!this.dom.controlsModal) return;
+    if (this.state === 'PLAYING' && !this.paused) {
+      this.togglePause();
+    }
+    document.body.classList.add('controls-customizing');
+    this.dom.controlsModal.classList.remove('hidden');
+    this.updateControlsModalUI();
+  }
+
+  closeControlsModal() {
+    if (!this.dom.controlsModal) return;
+    document.body.classList.remove('controls-customizing');
+    this.dom.controlsModal.classList.add('hidden');
+    this.applyTouchMode();
+  }
+
+  setupControlsModalListeners() {
+    if (this.dom.btnPauseControls) {
+      this.dom.btnPauseControls.addEventListener('click', () => this.openControlsModal());
+    }
+    if (this.dom.btnSplashControls) {
+      this.dom.btnSplashControls.addEventListener('click', () => this.openControlsModal());
+    }
+    if (this.dom.btnCloseControlsX) {
+      this.dom.btnCloseControlsX.addEventListener('click', () => {
+        this.saveJoystickSettings();
+        this.closeControlsModal();
+      });
+    }
+    if (this.dom.btnSaveControls) {
+      this.dom.btnSaveControls.addEventListener('click', () => {
+        this.saveJoystickSettings();
+        this.closeControlsModal();
+      });
+    }
+    if (this.dom.btnResetControls) {
+      this.dom.btnResetControls.addEventListener('click', () => {
+        this.joystickSettings = {
+          size: 100,
+          side: 'left',
+          offsetX: 24,
+          offsetY: 24,
+          dashSize: 100
+        };
+        this.applyJoystickSettings();
+        this.updateControlsModalUI();
+        this.saveJoystickSettings();
+      });
+    }
+
+    // Sliders live preview
+    if (this.dom.sliderJoySize) {
+      this.dom.sliderJoySize.addEventListener('input', (e) => {
+        this.joystickSettings.size = parseInt(e.target.value, 10);
+        if (this.dom.valCtrlJoySize) this.dom.valCtrlJoySize.innerText = `${this.joystickSettings.size}%`;
+        this.applyJoystickSettings();
+        this.updateControlsModalUI();
+      });
+    }
+    if (this.dom.sliderJoyX) {
+      this.dom.sliderJoyX.addEventListener('input', (e) => {
+        this.joystickSettings.offsetX = parseInt(e.target.value, 10);
+        if (this.dom.valCtrlJoyX) this.dom.valCtrlJoyX.innerText = `${this.joystickSettings.offsetX}px`;
+        this.applyJoystickSettings();
+        this.updateControlsModalUI();
+      });
+    }
+    if (this.dom.sliderJoyY) {
+      this.dom.sliderJoyY.addEventListener('input', (e) => {
+        this.joystickSettings.offsetY = parseInt(e.target.value, 10);
+        if (this.dom.valCtrlJoyY) this.dom.valCtrlJoyY.innerText = `${this.joystickSettings.offsetY}px`;
+        this.applyJoystickSettings();
+        this.updateControlsModalUI();
+      });
+    }
+    if (this.dom.sliderDashSize) {
+      this.dom.sliderDashSize.addEventListener('input', (e) => {
+        this.joystickSettings.dashSize = parseInt(e.target.value, 10);
+        if (this.dom.valCtrlDashSize) this.dom.valCtrlDashSize.innerText = `${this.joystickSettings.dashSize}%`;
+        this.applyJoystickSettings();
+        this.updateControlsModalUI();
+      });
+    }
+
+    // Side switch
+    if (this.dom.btnSideLeft) {
+      this.dom.btnSideLeft.addEventListener('click', () => {
+        this.joystickSettings.side = 'left';
+        this.applyJoystickSettings();
+        this.updateControlsModalUI();
+      });
+    }
+    if (this.dom.btnSideRight) {
+      this.dom.btnSideRight.addEventListener('click', () => {
+        this.joystickSettings.side = 'right';
+        this.applyJoystickSettings();
+        this.updateControlsModalUI();
+      });
+    }
+
+    // Presets
+    if (this.dom.controlsModal) {
+      const presetBtns = this.dom.controlsModal.querySelectorAll('.ctrl-preset-btn');
+      presetBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const p = btn.getAttribute('data-preset');
+          if (p === 'default') {
+            this.joystickSettings = { size: 100, side: 'left', offsetX: 24, offsetY: 24, dashSize: 100 };
+          } else if (p === 'compact') {
+            this.joystickSettings = { size: 80, side: 'left', offsetX: 16, offsetY: 16, dashSize: 85 };
+          } else if (p === 'large') {
+            this.joystickSettings = { size: 130, side: 'left', offsetX: 32, offsetY: 32, dashSize: 120 };
+          } else if (p === 'southpaw') {
+            this.joystickSettings = { size: 100, side: 'right', offsetX: 24, offsetY: 24, dashSize: 100 };
+          }
+          this.applyJoystickSettings();
+          this.updateControlsModalUI();
+        });
+      });
     }
   }
 

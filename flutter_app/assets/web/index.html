@@ -158,6 +158,7 @@
           <button class="pause-btn" id="btn-toggle-music">MUSIC: ON</button>
           <button class="pause-btn" id="btn-toggle-sfx">SFX: ON</button>
           <button class="pause-btn" id="btn-toggle-touch">TOUCH CONTROLS: AUTO</button>
+          <button class="pause-btn" id="btn-pause-controls">&#9881; JOYSTICK SETTINGS</button>
           <button class="pause-btn" id="btn-toggle-quality">QUALITY: HIGH</button>
           <button class="pause-btn danger" id="btn-give-up">GIVE UP</button>
         </div>
@@ -242,6 +243,87 @@
         <div class="splash-buttons">
           <button class="action-btn" id="btn-start">CLICK TO BEGIN</button>
           <button class="action-secondary-btn" id="btn-splash-leaderboard">&#9733; LEADERBOARD</button>
+          <button class="action-secondary-btn" id="btn-splash-controls">&#9881; CONTROLS</button>
+        </div>
+      </div>
+
+      <!-- Mobile Joystick & Controls Customization Modal -->
+      <div id="controls-modal" class="hidden">
+        <div class="controls-panel">
+          <div class="ctrl-header">
+            <span class="ctrl-icon">&#9881;</span>
+            <span class="ctrl-title">MOBILE JOYSTICK &amp; CONTROLS</span>
+            <button class="ctrl-close-x" id="btn-close-controls-x">&times;</button>
+          </div>
+          <div class="ctrl-divider"></div>
+
+          <!-- Quick Presets -->
+          <div class="ctrl-section">
+            <div class="ctrl-section-label">QUICK PRESETS</div>
+            <div class="ctrl-presets-row">
+              <button class="ctrl-preset-btn active" data-preset="default">DEFAULT</button>
+              <button class="ctrl-preset-btn" data-preset="compact">COMPACT</button>
+              <button class="ctrl-preset-btn" data-preset="large">LARGE</button>
+              <button class="ctrl-preset-btn" data-preset="southpaw">SOUTHPAW (SWAP)</button>
+            </div>
+          </div>
+
+          <!-- Sliders Grid -->
+          <div class="ctrl-settings-grid">
+            <!-- Joystick Size -->
+            <div class="ctrl-row">
+              <div class="ctrl-label-wrap">
+                <span class="ctrl-name">JOYSTICK SIZE</span>
+                <span class="ctrl-val" id="val-ctrl-joy-size">100%</span>
+              </div>
+              <input type="range" id="slider-joy-size" min="70" max="160" step="5" value="100" class="ctrl-slider" />
+            </div>
+
+            <!-- Joystick Placement (Side) -->
+            <div class="ctrl-row">
+              <div class="ctrl-label-wrap">
+                <span class="ctrl-name">JOYSTICK SIDE</span>
+              </div>
+              <div class="ctrl-toggle-wrap">
+                <button class="ctrl-side-btn active" id="btn-side-left">LEFT SIDE</button>
+                <button class="ctrl-side-btn" id="btn-side-right">RIGHT SIDE</button>
+              </div>
+            </div>
+
+            <!-- Joystick X Offset -->
+            <div class="ctrl-row">
+              <div class="ctrl-label-wrap">
+                <span class="ctrl-name">EDGE MARGIN (X)</span>
+                <span class="ctrl-val" id="val-ctrl-joy-x">24px</span>
+              </div>
+              <input type="range" id="slider-joy-x" min="10" max="140" step="2" value="24" class="ctrl-slider" />
+            </div>
+
+            <!-- Joystick Y Offset -->
+            <div class="ctrl-row">
+              <div class="ctrl-label-wrap">
+                <span class="ctrl-name">BOTTOM MARGIN (Y)</span>
+                <span class="ctrl-val" id="val-ctrl-joy-y">24px</span>
+              </div>
+              <input type="range" id="slider-joy-y" min="10" max="140" step="2" value="24" class="ctrl-slider" />
+            </div>
+
+            <!-- Dash Button Size -->
+            <div class="ctrl-row">
+              <div class="ctrl-label-wrap">
+                <span class="ctrl-name">DASH BUTTON SIZE</span>
+                <span class="ctrl-val" id="val-ctrl-dash-size">100%</span>
+              </div>
+              <input type="range" id="slider-dash-size" min="70" max="150" step="5" value="100" class="ctrl-slider" />
+            </div>
+          </div>
+
+          <div class="ctrl-preview-hint">Live preview active: touch controls below update in real-time</div>
+
+          <div class="ctrl-actions">
+            <button class="ctrl-btn-reset" id="btn-reset-controls">RESET DEFAULTS</button>
+            <button class="ctrl-btn-save" id="btn-save-controls">SAVE &amp; CLOSE</button>
+          </div>
         </div>
       </div>
 

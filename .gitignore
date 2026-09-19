@@ -11,6 +11,10 @@ package-lock.json
 video_frames_full/
 video_frames_new/
 video_death*/
+trailer_build/
+trailer_build_mg/
+trailer_analysis/
+trailer_assets/
 .playwright-mcp/
 *.mp4
 *.apk
